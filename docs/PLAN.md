@@ -13,7 +13,7 @@ Aceite: `npm ci && npm run gates` verde em clone limpo; `dist/` contém manifest
 Depende de: T-00 | Ler: FDD §2, §13 (SEC-01, SEC-11) · ADR-002
 Aceite: `scripts/check-manifest.mjs` falha se houver `content_scripts`, `host_permissions`, `<all_urls>`, `web_accessible_resources`, `externally_connectable`, CSP enfraquecida ou permissão fora da lista; ≥ 7 testes cobrindo cada falha e o caso válido.
 
-### [ ] T-02 — Normalização de texto
+### [x] T-02 — Normalização de texto
 Depende de: T-00 | Ler: FDD §4.1 | Reqs: R-04
 Aceite: `normalizeLabel()` conforme §4.1; testes table-driven PT/EN/ES (acentos, `*`, "(obrigatório)", espaços duplicados, string vazia, entrada muito longa).
 
