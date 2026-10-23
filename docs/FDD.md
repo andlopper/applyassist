@@ -148,7 +148,7 @@ Três builds (scripts/build.mjs, API JS do Vite, em sequência):
 2. **content**: entrada `src/content/main.ts` → `dist/content.js`, formato **IIFE** (injetado como script clássico). CSS do overlay importado como string (`?inline`) e aplicado dentro do Shadow DOM.
 3. **pages**: `options.html` e `sidepanel.html` (Preact), multi-page.
 `manifest.config.ts` gera `dist/manifest.json` (versão vem do `package.json`).
-Injeção: `chrome.action.onClicked` → `getSitePolicy(url)`; se `blocked`: `chrome.sidePanel.open({tabId})` (gesto do usuário) e encerrar; se `unverified`: injetar com aviso; se `verified`: injetar. `chrome.scripting.executeScript({target:{tabId}, files:['content.js']})`. Idempotência via `globalThis[Symbol.for('applyassist.active')]` (segunda injeção alterna/fecha o overlay). Páginas não injetáveis (`chrome://`, loja do Chrome) → badge "!" e mensagem.
+Injeção: `chrome.action.onClicked` → `getSitePolicy(url, siteOverrides)`; se `blocked`: `chrome.sidePanel.open({tabId})` (gesto do usuário) e encerrar; se `unverified`: injetar com aviso; se `verified`: injetar. A política usa correspondência de domínio e subdomínio; `linkedin.com` permanece bloqueado independentemente de overrides. Um override `block` bloqueia e `allow` suprime o aviso de site não verificado, sem significar que os termos do site foram revisados. `chrome.scripting.executeScript({target:{tabId}, files:['content.js']})`. Idempotência via `globalThis[Symbol.for('applyassist.active')]` (segunda injeção alterna/fecha o overlay). Páginas não injetáveis (`chrome://`, loja do Chrome) → badge "!" e mensagem.
 O comando `open-paste-mode` abre o painel lateral (gesto válido). iframes de outro domínio: spike T-24.
 
 ## §10 Mensageria

@@ -29,7 +29,7 @@ Aceite: Dice por tokens + Levenshtein para token único; "salario preterido" →
 Depende de: T-02 | Ler: FDD §3, §4.4 | Reqs: R-06, R-07
 Aceite: tabela de testes PT/EN/ES para todas as regras do §4.4; categoria sensível desligada → `blocked_by_setting`; consentimento/termos nunca preenchidos.
 
-### [ ] T-06 — Cadastro de sites (site policy)
+### [x] T-06 — Cadastro de sites (site policy)
 Depende de: T-00 | Ler: FDD §9 · ADR-008 · COMPLIANCE | Reqs: R-17, R-18
 Aceite: `getSitePolicy(url)` retorna `blocked | unverified | verified` por domínio (inclui subdomínios); `linkedin.com` e `*.linkedin.com` = `blocked`; Gupy e Vagas.com = `verified`; InHire, Sólides e demais = `unverified` (com aviso); `siteOverrides` do usuário respeitado, mas nunca libera LinkedIn.
 
