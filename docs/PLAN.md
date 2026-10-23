@@ -4,12 +4,12 @@ Regras: uma tarefa por vez, na ordem das dependências. Marque `[x]` ao concluir
 Legenda: **Ler** = seções que a IA deve ler (e só elas). **Aceite** = critérios verificáveis.
 
 ## Fase 0 — Fundação
-### [ ] T-00 — Scaffold do repositório
+### [x] T-00 — Scaffold do repositório
 Depende de: — | Ler: FDD §1, §2, §9, §15 · ADR-001, 002, 010, 011 | Reqs: R-22, R-23, R-24
 Entregáveis: `package.json` (scripts), `tsconfig.json` estrito, `scripts/build.mjs` (3 builds), `manifest.config.ts`, ESLint + Prettier, Vitest (happy-dom), esqueleto `src/` (entradas mínimas e sem efeitos), `.gitattributes`, `.editorconfig`, CI no GitHub Actions.
 Aceite: `npm ci && npm run gates` verde em clone limpo; `dist/` contém manifest, background.js (ES), content.js (IIFE), options.html, sidepanel.html; carregar `dist/` no Chrome sem erros; clicar no ícone não faz nada.
 
-### [ ] T-01 — Verificador de manifesto
+### [x] T-01 — Verificador de manifesto
 Depende de: T-00 | Ler: FDD §2, §13 (SEC-01, SEC-11) · ADR-002
 Aceite: `scripts/check-manifest.mjs` falha se houver `content_scripts`, `host_permissions`, `<all_urls>`, `web_accessible_resources`, `externally_connectable`, CSP enfraquecida ou permissão fora da lista; ≥ 7 testes cobrindo cada falha e o caso válido.
 
