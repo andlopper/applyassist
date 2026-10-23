@@ -33,7 +33,7 @@ Aceite: tabela de testes PT/EN/ES para todas as regras do §4.4; categoria sens�
 Depende de: T-00 | Ler: FDD §9 · ADR-008 · COMPLIANCE | Reqs: R-17, R-18
 Aceite: `getSitePolicy(url)` retorna `blocked | unverified | verified` por domínio (inclui subdomínios); `linkedin.com` e `*.linkedin.com` = `blocked`; Gupy e Vagas.com = `verified`; InHire, Sólides e demais = `unverified` (com aviso); `siteOverrides` do usuário respeitado, mas nunca libera LinkedIn.
 
-### [ ] T-07 — Armazenamento atrás de portas
+### [x] T-07 — Armazenamento atrás de portas
 Depende de: T-00 | Ler: FDD §3 · ADR-004 | Reqs: R-10
 Aceite: porta `Repository<T>`, adaptador `chrome.storage.local`, `FakeStorage`, validação na leitura (dado inválido → padrão), versão de esquema + 1 migração de exemplo; nenhum uso de `storage.sync` (teste/lint).
 
