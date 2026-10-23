@@ -25,7 +25,7 @@ Aceite: ≥ 25 tipos de campo em PT/EN/ES; teste explícito de "pretensão salar
 Depende de: T-03 | Ler: FDD §4.3 (passo 5) · ADR-003 | Reqs: R-04
 Aceite: Dice por tokens + Levenshtein para token único; "salario preterido" → `salaryExpectation` com `score ≥ 0,70`; limiares 0,90/0,70; sem falso positivo em 20 rótulos não relacionados.
 
-### [ ] T-05 — Política de campos proibidos e categorias sensíveis
+### [x] T-05 — Política de campos proibidos e categorias sensíveis
 Depende de: T-02 | Ler: FDD §3, §4.4 | Reqs: R-06, R-07
 Aceite: tabela de testes PT/EN/ES para todas as regras do §4.4; categoria sensível desligada → `blocked_by_setting`; consentimento/termos nunca preenchidos.
 
