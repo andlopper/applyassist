@@ -17,7 +17,7 @@ Aceite: `scripts/check-manifest.mjs` falha se houver `content_scripts`, `host_pe
 Depende de: T-00 | Ler: FDD §4.1 | Reqs: R-04
 Aceite: `normalizeLabel()` conforme §4.1; testes table-driven PT/EN/ES (acentos, `*`, "(obrigatório)", espaços duplicados, string vazia, entrada muito longa).
 
-### [ ] T-03 — Dicionário de sinônimos e correspondência exata
+### [x] T-03 — Dicionário de sinônimos e correspondência exata
 Depende de: T-02 | Ler: FDD §3, §4.2 | Reqs: R-04
 Aceite: ≥ 25 tipos de campo em PT/EN/ES; teste explícito de "pretensão salarial", "pretensão", "desired salary", "salário pretendido" → `salaryExpectation`; rótulo desconhecido retorna `unknown`.
 
