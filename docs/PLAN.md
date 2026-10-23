@@ -21,7 +21,7 @@ Aceite: `normalizeLabel()` conforme §4.1; testes table-driven PT/EN/ES (acentos
 Depende de: T-02 | Ler: FDD §3, §4.2 | Reqs: R-04
 Aceite: ≥ 25 tipos de campo em PT/EN/ES; teste explícito de "pretensão salarial", "pretensão", "desired salary", "salário pretendido" → `salaryExpectation`; rótulo desconhecido retorna `unknown`.
 
-### [ ] T-04 — Correspondência aproximada
+### [x] T-04 — Correspondência aproximada
 Depende de: T-03 | Ler: FDD §4.3 (passo 5) · ADR-003 | Reqs: R-04
 Aceite: Dice por tokens + Levenshtein para token único; "salario preterido" → `salaryExpectation` com `score ≥ 0,70`; limiares 0,90/0,70; sem falso positivo em 20 rótulos não relacionados.
 

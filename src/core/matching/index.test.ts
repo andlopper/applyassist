@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { matchExactLabel } from "./index";
+import { matchApproximateLabel, matchExactLabel } from "./index";
 
-describe("R-04 exact label matching", () => {
+describe("R-04 label matching", () => {
   it.each([
     ["nome completo", "fullName"],
     ["primeiro nome", "firstName"],
@@ -32,6 +32,93 @@ describe("R-04 exact label matching", () => {
     ["pessoa com deficiência", "pcd"],
   ])("maps Portuguese label %s to %s", (label, fieldKey) => {
     expect(matchExactLabel(label)).toEqual({ kind: "matched", fieldKey });
+  });
+
+  describe("R-04 approximate label matching", () => {
+    it.each([
+      ["salário preterido", "salaryExpectation"],
+      ["e-mail adress", "email"],
+      ["periodo de preaviso", "noticePeriod"],
+    ])("returns a scored match for Portuguese label %s", (label, fieldKey) => {
+      const result = matchApproximateLabel(label);
+
+      expect(result.kind).not.toBe("unknown");
+      expect(result).toMatchObject({ fieldKey });
+      expect(result.score).toBeGreaterThanOrEqual(0.7);
+    });
+
+    it("normalizes punctuation and duplicated spaces before approximate matching", () => {
+      expect(matchApproximateLabel("  e-mail   adress!! ")).toMatchObject({
+        kind: "uncertain",
+        fieldKey: "email",
+        score: expect.any(Number),
+      });
+    });
+
+    it.each([
+      ["desired salary", "salaryExpectation"],
+      ["email adress", "email"],
+    ])("returns a scored match for English label %s", (label, fieldKey) => {
+      const result = matchApproximateLabel(label);
+
+      expect(result.kind).not.toBe("unknown");
+      expect(result).toMatchObject({ fieldKey });
+    });
+
+    it.each([
+      ["salario deseado", "salaryExpectation"],
+      ["correo electronico", "email"],
+    ])("returns a scored match for Spanish label %s", (label, fieldKey) => {
+      const result = matchApproximateLabel(label);
+
+      expect(result.kind).not.toBe("unknown");
+      expect(result).toMatchObject({ fieldKey });
+    });
+
+    it("classifies scores using the ready and uncertain thresholds", () => {
+      expect(matchApproximateLabel("salario pretendido!!")).toMatchObject({
+        kind: "matched",
+        fieldKey: "salaryExpectation",
+        score: 1,
+      });
+      expect(matchApproximateLabel("phome")).toMatchObject({
+        kind: "uncertain",
+        fieldKey: "phone",
+      });
+      expect(matchApproximateLabel("phoen").kind).toBe("unknown");
+    });
+
+    it.each([
+      "project budget",
+      "favorite color",
+      "pet name",
+      "office floor",
+      "lunch preference",
+      "parking permit",
+      "shoe size",
+      "favorite movie",
+      "weekend plans",
+      "shirt size",
+      "travel destination",
+      "desk number",
+      "coffee preference",
+      "music genre",
+      "book title",
+      "weather today",
+      "preferred snack",
+      "hobby description",
+      "team mascot",
+      "vacation photos",
+    ])("does not match unrelated label %s", (label) => {
+      expect(matchApproximateLabel(label).kind).toBe("unknown");
+    });
+
+    it.each(["", "   ", "x".repeat(500)])(
+      "returns unknown for empty or very long input %j",
+      (label) => {
+        expect(matchApproximateLabel(label).kind).toBe("unknown");
+      },
+    );
   });
 
   it.each([
