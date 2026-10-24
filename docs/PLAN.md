@@ -46,7 +46,7 @@ Aceite: validação/importação de perfil JSON; `redactSensitive()` remove CPF,
 Depende de: T-01, T-06, T-07 | Ler: FDD §9, §10 · ADR-002, 008 | Reqs: R-01, R-17
 Aceite: clique injeta `content.js` via `activeTab` em site `verified/unverified`; em `blocked` abre o painel lateral; páginas não injetáveis → badge "!"; roteador de mensagens valida remetente e esquema (testes com `FakeChromeRuntime`); segunda injeção alterna o overlay.
 
-### [ ] T-10 — Scanner e visibilidade
+### [x] T-10 — Scanner e visibilidade
 Depende de: T-02 | Ler: FDD §5 | Reqs: R-03, R-20
 Aceite: `scanFields` com candidatos a rótulo na ordem do §5; fixtures com campo-isca (`left:-9999px`, opacidade 0, 1 px, coberto) nunca retornam como visíveis; 100 campos < 100 ms (teste de desempenho com folga).
 
