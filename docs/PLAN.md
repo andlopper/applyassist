@@ -42,7 +42,7 @@ Depende de: T-07 | Ler: FDD §3, §11.3 | Reqs: R-11, R-14
 Aceite: validação/importação de perfil JSON; `redactSensitive()` remove CPF, RG, telefone, e-mail, URLs de perfil e sequências longas de dígitos (testes com variações de formatação); truncamento por sentença.
 
 ## Fase 1 — Esqueleto da extensão
-### [ ] T-09 — Background: clique, política e injeção
+### [x] T-09 — Background: clique, política e injeção
 Depende de: T-01, T-06, T-07 | Ler: FDD §9, §10 · ADR-002, 008 | Reqs: R-01, R-17
 Aceite: clique injeta `content.js` via `activeTab` em site `verified/unverified`; em `blocked` abre o painel lateral; páginas não injetáveis → badge "!"; roteador de mensagens valida remetente e esquema (testes com `FakeChromeRuntime`); segunda injeção alterna o overlay.
 
