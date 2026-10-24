@@ -37,7 +37,7 @@ Aceite: `getSitePolicy(url)` retorna `blocked | unverified | verified` por domí
 Depende de: T-00 | Ler: FDD §3 · ADR-004 | Reqs: R-10
 Aceite: porta `Repository<T>`, adaptador `chrome.storage.local`, `FakeStorage`, validação na leitura (dado inválido → padrão), versão de esquema + 1 migração de exemplo; nenhum uso de `storage.sync` (teste/lint).
 
-### [ ] T-08 — Perfil, contexto e redação de dados sensíveis
+### [x] T-08 — Perfil, contexto e redação de dados sensíveis
 Depende de: T-07 | Ler: FDD §3, §11.3 | Reqs: R-11, R-14
 Aceite: validação/importação de perfil JSON; `redactSensitive()` remove CPF, RG, telefone, e-mail, URLs de perfil e sequências longas de dígitos (testes com variações de formatação); truncamento por sentença.
 
