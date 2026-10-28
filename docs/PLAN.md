@@ -50,7 +50,7 @@ Aceite: clique injeta `content.js` via `activeTab` em site `verified/unverified`
 Depende de: T-02 | Ler: FDD §5 | Reqs: R-03, R-20
 Aceite: `scanFields` com candidatos a rótulo na ordem do §5; fixtures com campo-isca (`left:-9999px`, opacidade 0, 1 px, coberto) nunca retornam como visíveis; 100 campos < 100 ms (teste de desempenho com folga).
 
-### [ ] T-11 — Pipeline de classificação
+### [x] T-11 — Pipeline de classificação
 Depende de: T-03, T-04, T-05, T-10 | Ler: FDD §4.3 · ADR-003 | Reqs: R-03, R-04
 Aceite: ordem exata do §4.3; fixtures PT/EN/ES com ≥ 90% de campos comuns reconhecidos (métrica impressa no teste); aprendido não revisado → `uncertain`; perguntas abertas detectadas.
 

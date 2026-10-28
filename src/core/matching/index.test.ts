@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { matchApproximateLabel, matchExactLabel } from "./index";
+import {
+  classifyFieldLabel,
+  matchApproximateLabel,
+  matchExactLabel,
+} from "./index";
 
 describe("R-04 label matching", () => {
   it.each([
@@ -213,5 +217,198 @@ describe("R-04 label matching", () => {
 
   it("returns unknown for a very long unmatched label", () => {
     expect(matchExactLabel("x".repeat(500))).toEqual({ kind: "unknown" });
+  });
+
+  it("classifies labels through the task-11 pipeline in the required order", () => {
+    expect(
+      classifyFieldLabel({
+        label: "Pretensão salarial",
+        type: "text",
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      fieldKey: "salaryExpectation",
+      confidence: expect.any(Number),
+    });
+
+    expect(
+      classifyFieldLabel({
+        label: "salario preterido",
+        type: "text",
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      fieldKey: "salaryExpectation",
+      confidence: expect.any(Number),
+    });
+
+    expect(
+      classifyFieldLabel({
+        label: "porque você quer esta vaga",
+        type: "textarea",
+      }),
+    ).toMatchObject({
+      kind: "open_text",
+      reason: expect.any(String),
+    });
+  });
+
+  it("keeps learned, unreviewed mappings as uncertain", () => {
+    expect(
+      classifyFieldLabel({
+        label: "pretensão salarial",
+        learnedMappings: {
+          "pretensao salarial": { fieldKey: "salaryExpectation", reviewed: false },
+        },
+      }),
+    ).toMatchObject({
+      kind: "uncertain",
+      fieldKey: "salaryExpectation",
+    });
+  });
+
+  it("recognizes common labels across PT/EN/ES with the pipeline", () => {
+    const fixtures = [
+      "pretensão salarial",
+      "email",
+      "nome completo",
+      "telefone",
+      "cidade",
+      "estado",
+      "pais",
+      "linkedin url",
+      "desired salary",
+      "full name",
+      "first name",
+      "last name",
+      "company",
+      "current role",
+      "portfólio",
+      "fecha de nacimiento",
+      "salario deseado",
+      "codigo postal",
+      "disponibilidad",
+      "por que me contratar",
+    ] as const;
+
+    const recognized = fixtures.filter((label) => {
+      const result = classifyFieldLabel({ label, type: "text" });
+      return result.kind !== "unknown";
+    }).length;
+
+    expect(recognized / fixtures.length).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("covers forbidden, blocked, learned, and open-text branches", () => {
+    expect(classifyFieldLabel({ label: "senha", type: "text" })).toMatchObject({
+      kind: "forbidden",
+    });
+    expect(
+      classifyFieldLabel({ label: "cpf", type: "text", settings: { documents: false } }),
+    ).toMatchObject({
+      kind: "blocked_by_setting",
+      fieldKey: "cpf",
+    });
+    expect(
+      classifyFieldLabel({
+        label: "email",
+        autocomplete: "email",
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      fieldKey: "email",
+    });
+    expect(
+      classifyFieldLabel({
+        label: "pretensão salarial",
+        learnedMappings: {
+          "pretensao salarial": { fieldKey: "salaryExpectation", reviewed: false },
+        },
+      }),
+    ).toMatchObject({
+      kind: "uncertain",
+      fieldKey: "salaryExpectation",
+    });
+    expect(
+      classifyFieldLabel({
+        label: "porque você quer trabalhar aqui",
+        maxlength: 250,
+      }),
+    ).toMatchObject({
+      kind: "open_text",
+    });
+    expect(classifyFieldLabel({ label: "phoen" }).kind).toBe("unknown");
+  });
+
+  it("covers secret-field blocked paths and learned host precedence", () => {
+    expect(
+      classifyFieldLabel({
+        label: "cpf",
+        settings: { documents: false },
+        metadata: { label: "cpf", autocomplete: "off" },
+      }),
+    ).toMatchObject({
+      kind: "blocked_by_setting",
+      fieldKey: "cpf",
+    });
+
+    expect(
+      classifyFieldLabel({
+        label: "email",
+        host: "example.com",
+        learnedMappings: {
+          "email": { fieldKey: "email", reviewed: true, host: "example.com" },
+        },
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      fieldKey: "email",
+    });
+
+    expect(
+      classifyFieldLabel({
+        label: "email",
+        host: "example.com",
+        learnedMappings: {
+          email: { fieldKey: "email", reviewed: false, host: "other.com" },
+        },
+      }),
+    ).toMatchObject({
+      kind: "uncertain",
+      fieldKey: "email",
+    });
+
+    expect(
+      classifyFieldLabel({
+        label: "endereço",
+        settings: { address: false },
+      }),
+    ).toMatchObject({ kind: "blocked_by_setting", fieldKey: "address" });
+  });
+
+  it("covers nearest unknown and forbidden autocomplete branches", () => {
+    expect(
+      classifyFieldLabel({
+        label: "campo sem relação",
+        metadata: { label: "cartao de credito", autocomplete: "cc-name" },
+      }),
+    ).toMatchObject({ kind: "forbidden" });
+
+    expect(
+      classifyFieldLabel({
+        label: "email adress",
+        metadata: { label: "email adress" },
+      }),
+    ).toMatchObject({
+      kind: "ready",
+      fieldKey: "email",
+    });
+
+    expect(
+      classifyFieldLabel({ label: "descreva sua experiência", type: "textarea" }).kind,
+    ).toBe("open_text");
+    expect(classifyFieldLabel({ label: "x".repeat(250), type: "text" }).kind).toBe(
+      "unknown",
+    );
   });
 });
