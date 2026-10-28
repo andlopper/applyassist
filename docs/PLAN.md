@@ -84,7 +84,7 @@ Aceite: `normalizeUrl` e `isLikelyDuplicate` com testes; aviso no overlay; marca
 Depende de: T-09 | Ler: FDD §11.2 | Reqs: R-13
 Aceite: documento `docs/SPIKES.md` com o que funcionou/falhou em `launchWebAuthFlow`, URL de retorno, permissões necessárias e fallback de chave manual; nenhuma funcionalidade de produção além do necessário para provar o fluxo.
 
-### [ ] T-19 — Provedor OpenRouter
+### [x] T-19 — Provedor OpenRouter
 Depende de: T-18, T-07 | Ler: FDD §11.1, §11.2 · ADR-006 | Reqs: R-13, R-14
 Aceite: `listModels`, `generate` em streaming (SSE) com `AbortSignal`, `provider.data_collection = "deny"` (campo confirmado na doc), mapeamento de 401/402/429/5xx para mensagens pt-BR; testes com `fetch` simulado e SSE fragmentado; chave só no background.
 
