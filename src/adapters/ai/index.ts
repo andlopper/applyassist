@@ -1,3 +1,5 @@
+import { buildPrompt } from "../../core/prompts";
+
 export type ProviderDataCollection = "deny";
 
 export interface GenerateRequest {
@@ -198,28 +200,13 @@ export class OpenRouterProvider implements AiProvider {
       throw new Error("Chave do OpenRouter ausente. Conecte a conta ou adicione uma chave manualmente.");
     }
 
-    const jobContext = req.jobContext ?? {};
-    const messageText = [
-      `<profile_context>`,
-      req.profileContext,
-      `</profile_context>`,
-      `<job_context>`,
-      JSON.stringify({
-        title: jobContext.title ?? "",
-        company: jobContext.company ?? "",
-        selectedText: jobContext.selectedText ?? "",
-      }),
-      `</job_context>`,
-      `<question>`,
-      req.question,
-      `</question>`,
-      `<language>`,
-      req.language,
-      `</language>`,
-      `<maxLength>`,
-      req.maxLength?.toString() ?? "",
-      `</maxLength>`,
-    ].join("\n");
+    const messageText = buildPrompt({
+      question: req.question,
+      maxLength: req.maxLength,
+      language: req.language,
+      profileContext: req.profileContext,
+      jobContext: req.jobContext,
+    });
 
     const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
       method: "POST",

@@ -90,6 +90,21 @@ describe("redaction helpers", () => {
     expect(truncated).toContain("Primeira frase");
   });
 
+  it("handles zero-length truncation and no-sentence boundaries", () => {
+    expect(truncateForContext("Texto válido", 0)).toBe("Texto válido");
+    expect(truncateForContext("Alpha beta gamma", 10)).toBe("Alpha beta");
+
+    const empty = buildProfileContext({
+      values: {
+        currentRole: "[REDACTED]",
+        unknownKey: "ignored",
+      } as never,
+      updatedAt: "2024-02-02T00:00:00.000Z",
+    });
+
+    expect(empty).toBe("");
+  });
+
   it("builds a safe profile context from profile values", () => {
     const context = buildProfileContext({
       values: {
@@ -105,5 +120,17 @@ describe("redaction helpers", () => {
     expect(context).not.toContain("ana@example.com");
     expect(context).not.toContain("99999-9999");
     expect(context).toContain("Engenheira de software");
+  });
+
+  it("redacts GitHub, long-digit and identifier values in profile text", () => {
+    const redacted = redactSensitive(
+      "GitHub: https://github.com/ana-silva/repo; CPF: 123.456.789-09; RG: 12.345.678-9; Telefone: (11) 99999-9999; Código: 1234567890123",
+    );
+
+    expect(redacted).not.toContain("https://github.com/ana-silva/repo");
+    expect(redacted).not.toContain("123.456.789-09");
+    expect(redacted).not.toContain("99999-9999");
+    expect(redacted).not.toContain("1234567890123");
+    expect(redacted).toContain("[REDACTED]");
   });
 });

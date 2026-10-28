@@ -88,7 +88,7 @@ Aceite: documento `docs/SPIKES.md` com o que funcionou/falhou em `launchWebAuthF
 Depende de: T-18, T-07 | Ler: FDD §11.1, §11.2 · ADR-006 | Reqs: R-13, R-14
 Aceite: `listModels`, `generate` em streaming (SSE) com `AbortSignal`, `provider.data_collection = "deny"` (campo confirmado na doc), mapeamento de 401/402/429/5xx para mensagens pt-BR; testes com `fetch` simulado e SSE fragmentado; chave só no background.
 
-### [ ] T-20 — Construtor de prompt
+### [x] T-20 — Construtor de prompt
 Depende de: T-08 | Ler: FDD §11.3, §11.4 | Reqs: R-14, R-19
 Aceite: função pura; testes de prompt (papel, regras, few-shot, formato, delimitadores não confiáveis, sem `TODO`, `maxLength`, idioma); injeção de instruções no `job_context` não altera as regras (teste estrutural); limites de contexto.
 
