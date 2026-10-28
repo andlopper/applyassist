@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProfileContext,
   importProfileJson,
+  parseProfileText,
   redactSensitive,
   truncateForContext,
   validateProfile,
@@ -48,6 +49,19 @@ describe("profile validation and JSON import", () => {
     expect(importProfileJson("not-json")).toEqual({
       values: {},
       updatedAt: expect.any(String),
+    });
+  });
+
+  it("parses plain-text profile data from onboarding paste", () => {
+    const profile = parseProfileText(
+      "Nome: Ana Silva\nE-mail: ana@exemplo.com\nTelefone: +55 11 99999-9999\nLinkedIn: https://linkedin.com/in/ana-silva",
+    );
+
+    expect(profile.values).toMatchObject({
+      fullName: "Ana Silva",
+      email: "ana@exemplo.com",
+      phone: "+55 11 99999-9999",
+      linkedinUrl: "https://linkedin.com/in/ana-silva",
     });
   });
 });

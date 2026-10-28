@@ -62,7 +62,7 @@ Aceite: setter nativo + `input`/`change`; `select`, `date`, `maxlength`; desfaze
 Depende de: T-09, T-11, T-12 | Ler: FDD §12, §10 (GET_FILL_VALUES) | Reqs: R-05, R-26
 Aceite: painel com contadores e lista; chip ao focar campo; "Aplicar", "Preencher prontos", "Desfazer", ESC; textos de `pt-br.ts`; sem `innerHTML` com dados externos (teste com rótulo malicioso `<img onerror>`); acessível por teclado e com `aria-live`.
 
-### [ ] T-14 — Options: onboarding e perfil
+### [x] T-14 — Options: onboarding e perfil
 Depende de: T-07, T-08 | Ler: FDD §12 (Options), §3 | Reqs: R-11, R-07, R-12
 Aceite: primeiro uso oferece colar texto / enviar .txt .md .json / formulário simples; revisão antes de salvar; interruptores das 4 categorias sensíveis (desligados por padrão); a extensão funciona sem configurar IA.
 

@@ -1,4 +1,5 @@
 import { FIELD_KEYS, type FieldKey } from "../matching/field-key";
+import { normalizeLabel } from "../normalize";
 
 export interface Profile {
   values: Partial<Record<FieldKey, string>>;
@@ -89,6 +90,113 @@ export function validateProfile(input: unknown): Profile {
       ? candidate.updatedAt
       : new Date().toISOString(),
   };
+}
+
+export function parseProfileText(raw: string): Profile {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return { values: {}, updatedAt: new Date().toISOString() };
+  }
+
+  const parsedJson = importProfileJson(raw);
+  if (Object.keys(parsedJson.values).length > 0) {
+    return parsedJson;
+  }
+
+  const values: Partial<Record<FieldKey, string>> = {};
+  const fieldAliases: Record<FieldKey, readonly string[]> = {
+    fullName: ["nome completo", "nome", "full name"],
+    firstName: ["nome", "first name", "given name"],
+    lastName: ["sobrenome", "last name", "family name"],
+    email: ["email", "e-mail", "mail"],
+    phone: ["telefone", "telefone celular", "phone", "celular", "tel"],
+    city: ["cidade", "city"],
+    state: ["estado", "state", "province"],
+    country: ["pais", "país", "country"],
+    linkedinUrl: ["linkedin", "linkedin url", "linkedin profile"],
+    githubUrl: ["github", "github url", "github profile"],
+    portfolioUrl: ["portfolio", "portifolio", "site", "website", "portfolio url"],
+    salaryExpectation: ["pretensao salarial", "salario pretendido", "desired salary", "salary expectation"],
+    availability: ["disponibilidade", "availability"],
+    noticePeriod: ["prazo de aviso", "notice period"],
+    workModel: ["modelo de trabalho", "work model"],
+    englishLevel: ["ingles", "english level"],
+    currentCompany: ["empresa atual", "current company"],
+    currentRole: ["cargo atual", "cargo", "current role"],
+    yearsExperience: ["anos de experiencia", "years experience"],
+    cpf: ["cpf"],
+    rg: ["rg"],
+    birthDate: ["data de nascimento", "birth date", "nascimento"],
+    address: ["endereco", "address"],
+    postalCode: ["cep", "postal code", "zip code"],
+    gender: ["genero", "gender"],
+    race: ["raca", "race"],
+    pcd: ["pcd", "deficiencia", "disabled"],
+  };
+
+  function detectFieldKey(key: string): FieldKey | undefined {
+    const normalizedKey = normalizeLabel(key);
+    for (const [fieldKey, aliases] of Object.entries(fieldAliases) as [FieldKey, readonly string[]][]) {
+      if (
+        aliases.some((alias) => {
+          const normalizedAlias = normalizeLabel(alias);
+          return normalizedAlias === normalizedKey || normalizedKey.includes(normalizedAlias);
+        })
+      ) {
+        return fieldKey;
+      }
+    }
+    return undefined;
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.search(/\s*[:=-]\s*/);
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const label = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed.slice(separatorIndex + trimmed.slice(separatorIndex).match(/\s*[:=-]\s*/)![0].length).trim();
+    const fieldKey = detectFieldKey(label);
+    if (fieldKey && value.length > 0) {
+      values[fieldKey] = value;
+    }
+  }
+
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi);
+  if (emailMatch && values.email === undefined) {
+    values.email = emailMatch[0];
+  }
+
+  const linkedInMatch = raw.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s]+/gi);
+  if (linkedInMatch && values.linkedinUrl === undefined) {
+    values.linkedinUrl = linkedInMatch[0];
+  }
+
+  const githubMatch = raw.match(/https?:\/\/(?:www\.)?github\.com\/[^\s]+/gi);
+  if (githubMatch && values.githubUrl === undefined) {
+    values.githubUrl = githubMatch[0];
+  }
+
+  const phoneMatch = raw.match(/(?:\+?\d[\d\s().-]{7,}\d)/g);
+  if (phoneMatch && values.phone === undefined) {
+    values.phone = phoneMatch[0].replace(/\s+/g, " ").trim();
+  }
+
+  const firstMeaningfulLine = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !/^(e-mail|email|telefone|phone|linkedin|github|nome|full name|city|cidade)/i.test(line));
+
+  if (firstMeaningfulLine && values.fullName === undefined && !/[:=-]/.test(firstMeaningfulLine)) {
+    values.fullName = firstMeaningfulLine;
+  }
+
+  return validateProfile({ values, updatedAt: new Date().toISOString() });
 }
 
 export function importProfileJson(raw: string): Profile {
