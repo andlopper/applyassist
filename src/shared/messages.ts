@@ -1,3 +1,5 @@
+import { FIELD_KEYS, type FieldKey } from "../core/matching/field-key";
+
 export interface GenerateRequestMessage {
   question: string;
   maxLength?: number;
@@ -13,7 +15,14 @@ export interface GenerateRequestMessage {
 
 export type RuntimeMessage =
   | { type: "GET_FILL_VALUES"; fieldKeys: string[]; host: string }
-  | { type: "LEARN_EVENT"; labelNorm: string; value: string; kind: string; host: string }
+  | {
+      type: "LEARN_EVENT";
+      labelNorm: string;
+      value: string;
+      kind: "short" | "open_text";
+      fieldKey?: FieldKey;
+      host: string;
+    }
   | { type: "GET_MAPPINGS"; host: string }
   | {
       type: "RECORD_APPLICATION";
@@ -42,6 +51,10 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
 
 function hasOptionalStrings(value: Record<string, unknown>, keys: readonly string[]): boolean {
   return keys.every((key) => !(key in value) || typeof value[key] === "string");
+}
+
+function isFieldKey(value: unknown): value is FieldKey {
+  return typeof value === "string" && FIELD_KEYS.some((fieldKey) => fieldKey === value);
 }
 
 function isGenerateRequestMessage(value: Record<string, unknown>): boolean {
@@ -84,10 +97,11 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
       );
     case "LEARN_EVENT":
       return (
-        hasOnlyKeys(value, ["type", "labelNorm", "value", "kind", "host"]) &&
+        hasOnlyKeys(value, ["type", "labelNorm", "value", "kind", "fieldKey", "host"]) &&
         typeof value.labelNorm === "string" &&
         typeof value.value === "string" &&
-        typeof value.kind === "string" &&
+        (value.kind === "short" || value.kind === "open_text") &&
+        (value.fieldKey === undefined || isFieldKey(value.fieldKey)) &&
         typeof value.host === "string"
       );
     case "GET_MAPPINGS":

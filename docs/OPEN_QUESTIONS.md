@@ -12,3 +12,4 @@ Formato: `Q-nn` · pergunta · quem resolve · tarefa relacionada · status. A I
 - **Q-09** — Os formulários de InHire e Sólides usam Shadow DOM, iframes ou campos customizados (listas, radios)? Descobrir só em teste manual local antes de prometer suporte. (T-10, T-24) — aberto
 - **Q-08** — Formulários da Gupy usam Shadow DOM ou iframes? (T-10, T-24) — aberto
 - **Q-10** — Campos desconhecidos ou reconhecidos sem valor de perfil devem continuar agrupados em "Abertas" no overlay ou precisam de uma categoria própria? Até decidir, não são aplicáveis. (T-13) — aberto
+- **Q-11** — Qual identificador seguro e estável deve compor `jobKey` de `AnswerMemory`? Até decidir, respostas abertas ficam marcadas como escopo `job`, sem `jobKey`, e não são reaplicadas automaticamente. (T-15, T-16) — aberto

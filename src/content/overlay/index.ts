@@ -1,8 +1,13 @@
-import { classifyFieldLabel, type FieldClassificationResult } from "../../core/matching";
+import {
+  classifyFieldLabel,
+  type FieldClassificationResult,
+  type LearnedMapping,
+} from "../../core/matching";
 import { FIELD_KEYS, type FieldKey } from "../../core/matching/field-key";
 import { createFillHistory, fillField, type FillResult } from "../filler";
 import { scanFields, type FieldCandidate } from "../scanner";
 import { ptBr } from "../../shared/i18n/pt-br";
+import type { RuntimeMessage } from "../../shared/messages";
 
 type OverlayStatus = "ready" | "uncertain" | "open" | "blocked";
 
@@ -18,13 +23,7 @@ type OverlayField =
       status: "open" | "blocked";
     };
 
-type FillValuesRequest = {
-  type: "GET_FILL_VALUES";
-  fieldKeys: string[];
-  host: string;
-};
-
-export type OverlayMessageSender = (message: FillValuesRequest) => Promise<unknown>;
+export type OverlayMessageSender = (message: RuntimeMessage) => Promise<unknown>;
 
 export interface OverlayController {
   refresh(): Promise<void>;
@@ -113,7 +112,41 @@ function parseFillValues(response: unknown): Partial<Record<FieldKey, string>> {
   return values;
 }
 
-function getFieldClassification(candidate: FieldCandidate): FieldClassificationResult {
+function parseLearnedMappings(response: unknown): Record<string, LearnedMapping> {
+  if (!isRecord(response) || response.error === true || !isRecord(response.mappings)) {
+    throw new Error("Invalid GET_MAPPINGS response.");
+  }
+
+  const mappings: Record<string, LearnedMapping> = {};
+  for (const [labelNorm, value] of Object.entries(response.mappings)) {
+    if (
+      !isRecord(value) ||
+      typeof value.fieldKey !== "string" ||
+      !FIELD_KEYS.some((fieldKey) => fieldKey === value.fieldKey) ||
+      typeof value.reviewed !== "boolean" ||
+      (value.host !== undefined && typeof value.host !== "string")
+    ) {
+      throw new Error("Invalid learned mapping.");
+    }
+
+    const fieldKey = FIELD_KEYS.find((knownKey) => knownKey === value.fieldKey);
+    if (!fieldKey) {
+      throw new Error("Invalid learned mapping field key.");
+    }
+    mappings[labelNorm] = {
+      fieldKey,
+      reviewed: value.reviewed,
+      ...(typeof value.host === "string" ? { host: value.host } : {}),
+    };
+  }
+  return mappings;
+}
+
+function getFieldClassification(
+  candidate: FieldCandidate,
+  host: string,
+  learnedMappings: Record<string, LearnedMapping>,
+): FieldClassificationResult {
   const element = candidate.element;
   const type = element.type;
   const autocomplete = element.autocomplete;
@@ -127,6 +160,8 @@ function getFieldClassification(candidate: FieldCandidate): FieldClassificationR
     type,
     autocomplete,
     maxlength,
+    host,
+    learnedMappings,
     metadata: {
       type,
       autocomplete,
@@ -399,9 +434,12 @@ export function mountOverlay(
     announce(ptBr.overlayLoading);
     try {
       const candidates = scanFields(ownerDocument);
+      const host = ownerDocument.location?.hostname ?? "";
+      const rawMappings = await sendMessage({ type: "GET_MAPPINGS", host });
+      const learnedMappings = parseLearnedMappings(rawMappings);
       const classified = candidates.map((candidate) => ({
         candidate,
-        classification: getFieldClassification(candidate),
+        classification: getFieldClassification(candidate, host, learnedMappings),
       }));
       const fieldKeys = [
         ...new Set(
@@ -417,7 +455,7 @@ export function mountOverlay(
           ? await sendMessage({
               type: "GET_FILL_VALUES",
               fieldKeys,
-              host: ownerDocument.location?.hostname ?? "",
+              host,
             })
           : { values: {} };
 

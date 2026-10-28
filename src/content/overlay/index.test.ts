@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { ptBr } from "../../shared/i18n/pt-br";
+import type { RuntimeMessage } from "../../shared/messages";
 import { mountOverlay } from "./index";
 
 class FakeOverlayRuntime {
   constructor(
     private readonly response: { values: Record<string, string> } | { error: boolean } | Error,
+    private readonly learnedMappings: Record<string, unknown> = {},
   ) {}
 
-  readonly sendMessage = vi.fn(async () => {
+  readonly sendMessage = vi.fn(async (message: RuntimeMessage) => {
     if (this.response instanceof Error) {
       throw this.response;
+    }
+
+    if (message.type === "GET_MAPPINGS") {
+      return { mappings: this.learnedMappings };
     }
 
     return this.response;
@@ -68,6 +74,33 @@ describe("content overlay", () => {
     expect(root?.querySelector("img")).toBeNull();
     expect(root?.textContent).toContain(maliciousLabel);
     expect(root?.querySelectorAll(".field-label").item(1)?.textContent?.length).toBe(161);
+
+    overlay.dispose();
+  });
+
+  it("uses learned mappings as uncertain suggestions until they are reviewed", async () => {
+    document.body.replaceChildren();
+    addField("My custom field");
+    const runtime = new FakeOverlayRuntime(
+      { values: { city: "Recife" } },
+      {
+        "my custom field": {
+          fieldKey: "city",
+          reviewed: false,
+          host: window.location.hostname,
+        },
+      },
+    );
+    const overlay = mountOverlay(document, runtime.sendMessage);
+
+    await overlay.refresh();
+
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    expect(root?.textContent).toContain("Incertos: 1");
+    expect(root?.textContent).toContain("Recife");
+    expect(runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "GET_FILL_VALUES", fieldKeys: ["city"] }),
+    );
 
     overlay.dispose();
   });
@@ -156,13 +189,13 @@ describe("content overlay", () => {
     await overlay.refresh();
     addField("Cidade");
     await vi.waitFor(() => {
-      expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
+      expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
     });
 
     overlay.dispose();
     addField("Nome completo");
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
   });
 
   it("announces a generic error when loading suggestions fails", async () => {

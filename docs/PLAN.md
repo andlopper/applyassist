@@ -67,7 +67,7 @@ Depende de: T-07, T-08 | Ler: FDD §12 (Options), §3 | Reqs: R-11, R-07, R-12
 Aceite: primeiro uso oferece colar texto / enviar .txt .md .json / formulário simples; revisão antes de salvar; interruptores das 4 categorias sensíveis (desligados por padrão); a extensão funciona sem configurar IA.
 
 ## Fase 2 — Aprendizado e registros
-### [ ] T-15 — Motor de aprendizado
+### [x] T-15 — Motor de aprendizado
 Depende de: T-11, T-13 | Ler: FDD §7 · ADR-005 | Reqs: R-08
 Aceite: regras 1–3 do §7 com testes; nunca aprende campo proibido; conflito não sobrescreve; `submit` capturado sem impedir o envio.
 

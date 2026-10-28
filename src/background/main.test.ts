@@ -233,4 +233,251 @@ describe("R-01/R-17 background action", () => {
       });
     });
   });
+
+  it("persists an unreviewed mapping from a unique profile value", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: { email: "ada@example.test" },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "Correo electrónico",
+        value: "ada@example.test",
+        kind: "short",
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 21 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(async () => {
+      expect(sendResponse).toHaveBeenCalledWith({ kind: "mapping" });
+      expect(await storage.getItem("mappings:v1")).toMatchObject({
+        schemaVersion: 1,
+        value: [
+          {
+            labelNorm: "correo electronico",
+            fieldKey: "email",
+            reviewed: false,
+            host: "example.org",
+          },
+        ],
+      });
+    });
+  });
+
+  it("stores a changed known-field value as a conflict without changing the profile", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: { email: "ada@example.test" },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "E-mail",
+        value: "new@example.test",
+        kind: "short",
+        fieldKey: "email",
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 22 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(async () => {
+      expect(sendResponse).toHaveBeenCalledWith({ kind: "conflict" });
+      expect(await storage.getItem("conflicts:v1")).toMatchObject({
+        schemaVersion: 1,
+        value: [
+          {
+            fieldKey: "email",
+            stored: "ada@example.test",
+            seen: "new@example.test",
+            host: "example.org",
+          },
+        ],
+      });
+    });
+    expect(await storage.getItem("profile:v1")).toMatchObject({
+      value: { values: { email: "ada@example.test" } },
+    });
+  });
+
+  it("validates and retains existing learning records", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("mappings:v1", {
+      schemaVersion: 1,
+      value: [
+        {
+          labelNorm: "preferred email",
+          fieldKey: "email",
+          reviewed: true,
+          hits: 4,
+          lastSeen: "2026-01-01T00:00:00.000Z",
+          host: "example.org",
+        },
+      ],
+    });
+    await storage.setItem("answers:v1", {
+      schemaVersion: 1,
+      value: [
+        {
+          labelNorm: "why this role",
+          answer: "Build useful products",
+          scope: "job",
+          host: "example.org",
+          jobKey: "example.org/jobs/42",
+          reviewed: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    await storage.setItem("conflicts:v1", {
+      schemaVersion: 1,
+      value: [
+        {
+          fieldKey: "city",
+          stored: "Recife",
+          seen: "Lisbon",
+          host: "example.org",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "Describe your goals",
+        value: "Improve accessibility",
+        kind: "open_text",
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 23 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ kind: "answer" });
+    });
+    expect(await storage.getItem("mappings:v1")).toMatchObject({
+      value: [{ labelNorm: "preferred email", reviewed: true }],
+    });
+    expect(await storage.getItem("conflicts:v1")).toMatchObject({
+      value: [{ fieldKey: "city", seen: "Lisbon" }],
+    });
+    expect(await storage.getItem("answers:v1")).toMatchObject({
+      value: [
+        { jobKey: "example.org/jobs/42" },
+        { labelNorm: "describe goals", scope: "job", reviewed: false },
+      ],
+    });
+  });
+
+  it("returns global and matching-host mappings, preferring the host mapping", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("mappings:v1", {
+      schemaVersion: 1,
+      value: [
+        {
+          labelNorm: "where are you based",
+          fieldKey: "country",
+          reviewed: true,
+          hits: 1,
+          lastSeen: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          labelNorm: "where are you based",
+          fieldKey: "city",
+          reviewed: false,
+          hits: 2,
+          lastSeen: "2026-01-02T00:00:00.000Z",
+          host: "example.org",
+        },
+        {
+          labelNorm: "where are you based",
+          fieldKey: "state",
+          reviewed: true,
+          hits: 1,
+          lastSeen: "2026-01-03T00:00:00.000Z",
+          host: "other.example",
+        },
+        {
+          labelNorm: "work email",
+          fieldKey: "email",
+          reviewed: true,
+          hits: 1,
+          lastSeen: "2026-01-04T00:00:00.000Z",
+        },
+      ],
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "GET_MAPPINGS", host: "EXAMPLE.ORG" },
+      { id: chrome.runtime.id, tab: { id: 25 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({
+        mappings: {
+          "where are you based": {
+            fieldKey: "city",
+            reviewed: false,
+            host: "example.org",
+          },
+          "work email": { fieldKey: "email", reviewed: true },
+        },
+      });
+    });
+  });
+
+  it("reports invalid stored learning data without overwriting it", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const invalidCollection = { schemaVersion: 0, value: [] };
+    await storage.setItem("mappings:v1", invalidCollection);
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "custom",
+        value: "value",
+        kind: "short",
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 24 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ error: true });
+    });
+    expect(await storage.getItem("mappings:v1")).toEqual(invalidCollection);
+  });
 });

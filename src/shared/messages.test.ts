@@ -6,7 +6,14 @@ describe("runtime message schemas", () => {
     ["fill values", { type: "GET_FILL_VALUES", fieldKeys: ["email"], host: "example.org" }],
     [
       "learning event",
-      { type: "LEARN_EVENT", labelNorm: "name", value: "Ada", kind: "text", host: "example.org" },
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "name",
+        value: "Ada",
+        kind: "short",
+        fieldKey: "fullName",
+        host: "example.org",
+      },
     ],
     ["mappings", { type: "GET_MAPPINGS", host: "example.org" }],
     [
@@ -53,6 +60,8 @@ describe("runtime message schemas", () => {
     { type: "GET_FILL_VALUES", fieldKeys: [1], host: "example.org" },
     { type: "GET_FILL_VALUES", fieldKeys: [], host: "example.org", extra: true },
     { type: "LEARN_EVENT", labelNorm: "name", value: "Ada", kind: 1, host: "example.org" },
+    { type: "LEARN_EVENT", labelNorm: "name", value: "Ada", kind: "text", host: "example.org" },
+    { type: "LEARN_EVENT", labelNorm: "name", value: "Ada", kind: "short", fieldKey: "not-a-field", host: "example.org" },
     { type: "GET_MAPPINGS", host: 42 },
     { type: "RECORD_APPLICATION", url: "https://example.org", status: "unknown" },
     { type: "RECORD_APPLICATION", url: "https://example.org", title: 1, status: "started" },

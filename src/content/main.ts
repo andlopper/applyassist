@@ -1,7 +1,9 @@
 import { mountOverlay, type OverlayController, type OverlayMessageSender } from "./overlay";
+import { mountLearningCapture } from "./learning";
 
 const ACTIVE_SYMBOL = Symbol.for("applyassist.active");
 const OVERLAY_CONTROLLER_SYMBOL = Symbol.for("applyassist.overlay-controller");
+let stopLearningCapture: (() => void) | undefined;
 
 declare const chrome:
   | {
@@ -48,9 +50,14 @@ if (typeof window !== "undefined") {
         document,
         (message) => chrome.runtime.sendMessage(message),
         () => {
+          stopLearningCapture?.();
+          stopLearningCapture = undefined;
           Reflect.deleteProperty(globalThis, ACTIVE_SYMBOL);
           Reflect.deleteProperty(globalThis, OVERLAY_CONTROLLER_SYMBOL);
         },
+      );
+      stopLearningCapture = mountLearningCapture(document, (message) =>
+        chrome.runtime.sendMessage(message),
       );
       Object.defineProperty(globalThis, OVERLAY_CONTROLLER_SYMBOL, {
         configurable: true,
@@ -67,6 +74,8 @@ if (typeof window !== "undefined") {
     if (isOverlayController(storedController)) {
       storedController.dispose();
     }
+    stopLearningCapture?.();
+    stopLearningCapture = undefined;
     Reflect.deleteProperty(globalThis, OVERLAY_CONTROLLER_SYMBOL);
   });
 }
