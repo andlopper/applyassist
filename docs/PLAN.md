@@ -71,7 +71,7 @@ Aceite: primeiro uso oferece colar texto / enviar .txt .md .json / formulário s
 Depende de: T-11, T-13 | Ler: FDD §7 · ADR-005 | Reqs: R-08
 Aceite: regras 1–3 do §7 com testes; nunca aprende campo proibido; conflito não sobrescreve; `submit` capturado sem impedir o envio.
 
-### [ ] T-16 — Tela de revisão
+### [x] T-16 — Tela de revisão
 Depende de: T-14, T-15 | Ler: FDD §7, §12 (Options) | Reqs: R-08, R-10
 Aceite: tabela com status, edição, exclusão, "não aprender este rótulo", resolução de conflito (manter/substituir/só esta vaga), ações em lote, exportar/importar JSON, apagar tudo com confirmação.
 

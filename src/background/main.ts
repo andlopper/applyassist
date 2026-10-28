@@ -106,6 +106,21 @@ function readLearningCollection<T>(
   return stored.value;
 }
 
+function readIgnoredLabels(stored: unknown): string[] {
+  if (stored === undefined) {
+    return [];
+  }
+  if (
+    !isRecord(stored) ||
+    stored.schemaVersion !== STORAGE_SCHEMA_VERSION ||
+    !Array.isArray(stored.value) ||
+    !stored.value.every((label) => typeof label === "string")
+  ) {
+    throw new Error("Invalid stored ignored labels.");
+  }
+  return stored.value;
+}
+
 async function readProfileValues(
   storage: StorageAdapter,
 ): Promise<Partial<Record<FieldKey, string>>> {
@@ -139,7 +154,7 @@ async function handleLearningEvent(
   storage: StorageAdapter,
   message: Extract<RuntimeMessage, { type: "LEARN_EVENT" }>,
 ): Promise<{ kind: string }> {
-  const [profile, mappings, answers, conflicts] = await Promise.all([
+  const [profile, mappings, answers, conflicts, ignoredLabels] = await Promise.all([
     readProfileValues(storage),
     storage
       .getItem("mappings:v1")
@@ -150,6 +165,7 @@ async function handleLearningEvent(
     storage
       .getItem("conflicts:v1")
       .then((value) => readLearningCollection(value, "conflicts:v1", isLearningConflict)),
+    storage.getItem("ignored-labels:v1").then(readIgnoredLabels),
   ]);
   const outcome = learnFromEvent(
     {
@@ -157,7 +173,7 @@ async function handleLearningEvent(
       now: new Date().toISOString(),
       profile,
     },
-    { mappings, answers, conflicts },
+    { mappings, answers, conflicts, ignoredLabels },
   );
 
   if (outcome.kind === "mapping") {

@@ -320,6 +320,35 @@ describe("R-01/R-17 background action", () => {
     });
   });
 
+  it("R-08 does not learn labels saved in the ignored-label list", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("ignored-labels:v1", {
+      schemaVersion: 1,
+      value: ["preferred city"],
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "LEARN_EVENT",
+        labelNorm: "Preferred city",
+        value: "Lisbon",
+        kind: "short",
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 24 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ kind: "ignored" });
+    });
+    expect(await storage.getItem("answers:v1")).toBeUndefined();
+    expect(await storage.getItem("mappings:v1")).toBeUndefined();
+  });
+
   it("validates and retains existing learning records", async () => {
     const chrome = new FakeBackgroundChrome();
     const storage = new FakeStorage();

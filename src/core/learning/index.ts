@@ -33,6 +33,7 @@ export interface LearningState {
   mappings: LearnedMapping[];
   answers: AnswerMemory[];
   conflicts: LearningConflict[];
+  ignoredLabels?: readonly string[];
 }
 
 export interface LearningEvent {
@@ -48,7 +49,11 @@ export interface LearningEvent {
 
 export type LearningOutcome =
   | { kind: "mapping" | "answer" | "conflict"; state: LearningState }
-  | { kind: "ignored"; reason: "empty" | "forbidden" | "sensitive" | "unchanged"; state: LearningState };
+  | {
+      kind: "ignored";
+      reason: "empty" | "forbidden" | "sensitive" | "unchanged" | "ignored_label";
+      state: LearningState;
+    };
 
 function ignored(
   state: LearningState,
@@ -70,6 +75,10 @@ export function learnFromEvent(event: LearningEvent, state: LearningState): Lear
 
   if (event.fieldKey && isSensitiveFieldBlocked(event.fieldKey)) {
     return ignored(state, "sensitive");
+  }
+
+  if (state.ignoredLabels?.includes(labelNorm)) {
+    return ignored(state, "ignored_label");
   }
 
   if (event.fieldKey) {

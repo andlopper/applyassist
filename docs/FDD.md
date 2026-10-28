@@ -137,6 +137,7 @@ Para o valor `v` do campo (se não vazio, não proibido, categoria permitida):
 2. Campo **desconhecido** e `normalize(v)` igual a exatamente um valor do perfil → criar/atualizar `Mapping(labelNorm → fieldKey)` com `reviewed:false`.
 3. Senão → `AnswerMemory` (`scope:'job'` para pergunta aberta; `'host'` para curtas), `reviewed:false`. Respostas por vaga nunca são reaplicadas automaticamente, apenas oferecidas como referência.
 Revisão: aprovar, editar, apagar, "não aprender este rótulo"; resolver conflito: manter / substituir / guardar só para esta vaga.
+Rótulos marcados para não aprender são normalizados e persistidos em `ignored-labels:v1`; eventos futuros com esses rótulos são ignorados.
 
 ## §8 Candidaturas e duplicatas
 `normalizeUrl(url)`: host em minúsculas; remover `www.`; remover fragmento; remover parâmetros de rastreamento (`utm_*`, `gclid`, `fbclid`, `ref`, `source`, `trk`); manter parâmetros de identificação de vaga (`gh_jid`, `jobId`, `id`, `vaga`, `job`); remover `/` final.
@@ -206,7 +207,7 @@ Testes de prompt (T-20): tem papel, regras, few-shot, formato de saída, delimit
 ## §12 Interface
 - **Overlay (content, Shadow DOM):** canto superior direito; contadores (Prontos · Incertos · Abertas · Bloqueados); lista de campos com rótulo, sugestão truncada, chip de status e botão "Aplicar"; botões "Preencher prontos", "Desfazer", "Fechar". Ao focar um campo com sugestão, aparece um chip "Usar: … (Alt+A)". Perguntas abertas: botão "Gerar" (se IA conectada) e opção "Usar texto selecionado como descrição da vaga".
 - No overlay, campos desconhecidos ou sem sugestão ficam em "Abertas" e não podem ser aplicados; essa categorização provisória está registrada em Q-10.
-- **Options:** abas Perfil · Contexto · Aprendizado (tabela com status, conflitos, ações em lote) · Candidaturas · Sites e bloqueios · Conexão IA · Dados (exportar, importar, apagar tudo). Onboarding no primeiro uso: colar texto / enviar .txt, .md, .json / formulário simples; revisão antes de salvar.
+- **Options:** abas Perfil · Contexto · Aprendizado (tabela com status, conflitos, ações em lote) · Candidaturas · Sites e bloqueios · Conexão IA · Dados (exportar, importar, apagar tudo). A revisão oferece edição, exclusão, aprovação e bloqueio de rótulos; conflitos podem manter/substituir o perfil ou criar uma resposta de escopo `job`. Importação valida o JSON antes de alterar os dados; exportação inclui perfil, configurações e aprendizado, nunca chaves de IA. Apagar tudo exige confirmação. Onboarding no primeiro uso: colar texto / enviar .txt, .md, .json / formulário simples; revisão antes de salvar.
 - **Side panel (modo colar):** campos "pergunta" e "descrição da vaga" (colados), botão Gerar, saída editável, Copiar. Não acessa a página.
 - Acessibilidade: `role="dialog"`, `aria-live="polite"`, foco gerenciado sem roubar foco dos campos da página, ESC fecha, contraste AA.
 - Todos os textos vêm de `src/shared/i18n/pt-br.ts`.

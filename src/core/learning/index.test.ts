@@ -211,6 +211,27 @@ describe("learning engine", () => {
     expect(outcome.state.mappings).toEqual(state.mappings);
   });
 
+  it("R-08 does not learn labels previously marked as ignored", () => {
+    const state: LearningState = {
+      ...EMPTY_STATE,
+      ignoredLabels: ["preferred city"],
+    };
+    const outcome = learnFromEvent(
+      {
+        labelNorm: "Preferred city",
+        value: "Lisbon",
+        host: "example.org",
+        kind: "short",
+        now: "2026-01-01T00:00:00.000Z",
+        profile: {},
+      },
+      state,
+    );
+
+    expect(outcome.kind).toBe("ignored");
+    expect(outcome.state).toEqual(state);
+  });
+
   it("updates an existing conflict instead of duplicating it", () => {
     const event = {
       labelNorm: "Email",
@@ -222,10 +243,7 @@ describe("learning engine", () => {
       profile: PROFILE,
     };
     const first = learnFromEvent(event, EMPTY_STATE);
-    const second = learnFromEvent(
-      { ...event, now: "2026-01-02T00:00:00.000Z" },
-      first.state,
-    );
+    const second = learnFromEvent({ ...event, now: "2026-01-02T00:00:00.000Z" }, first.state);
 
     expect(second.kind).toBe("conflict");
     expect(second.state.conflicts).toHaveLength(1);
@@ -236,19 +254,25 @@ describe("learning engine", () => {
     ["empty values", { labelNorm: "custom", value: "   ", kind: "short" as const }],
     ["password labels", { labelNorm: "Password", value: "secret", kind: "short" as const }],
     ["OTP labels", { labelNorm: "Código OTP", value: "123456", kind: "short" as const }],
-    ["sensitive fields", { labelNorm: "Document", value: "value", kind: "short" as const, fieldKey: "cpf" as const }],
-    ["sensitive profile values", { labelNorm: "Document", value: "12345678900", kind: "short" as const }],
-    ["labels with no normalized tokens", { labelNorm: "---", value: "answer", kind: "short" as const }],
+    [
+      "sensitive fields",
+      { labelNorm: "Document", value: "value", kind: "short" as const, fieldKey: "cpf" as const },
+    ],
+    [
+      "sensitive profile values",
+      { labelNorm: "Document", value: "12345678900", kind: "short" as const },
+    ],
+    [
+      "labels with no normalized tokens",
+      { labelNorm: "---", value: "answer", kind: "short" as const },
+    ],
   ])("does not learn %s", (_name, event) => {
     const outcome = learnFromEvent(
       {
         ...event,
         host: "example.org",
         now: "2026-01-01T00:00:00.000Z",
-        profile:
-          event.value === "12345678900"
-            ? { ...PROFILE, cpf: "12345678900" }
-            : PROFILE,
+        profile: event.value === "12345678900" ? { ...PROFILE, cpf: "12345678900" } : PROFILE,
       },
       EMPTY_STATE,
     );
@@ -306,8 +330,6 @@ describe("learning engine", () => {
       EMPTY_STATE,
     );
 
-    expect(outcome.state.mappings[0]?.labelNorm).toBe(
-      `qual seu mail ${"x".repeat(300)}`,
-    );
+    expect(outcome.state.mappings[0]?.labelNorm).toBe(`qual seu mail ${"x".repeat(300)}`);
   });
 });
