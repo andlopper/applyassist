@@ -75,7 +75,7 @@ Aceite: regras 1–3 do §7 com testes; nunca aprende campo proibido; conflito n
 Depende de: T-14, T-15 | Ler: FDD §7, §12 (Options) | Reqs: R-08, R-10
 Aceite: tabela com status, edição, exclusão, "não aprender este rótulo", resolução de conflito (manter/substituir/só esta vaga), ações em lote, exportar/importar JSON, apagar tudo com confirmação.
 
-### [ ] T-17 — Candidaturas e duplicatas
+### [x] T-17 — Candidaturas e duplicatas
 Depende de: T-13 | Ler: FDD §8 | Reqs: R-09
 Aceite: `normalizeUrl` e `isLikelyDuplicate` com testes; aviso no overlay; marcar "me candidatei"; lista na aba Candidaturas.
 

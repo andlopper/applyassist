@@ -5,6 +5,11 @@ import {
 } from "../adapters/storage";
 import { getSitePolicy, type SiteOverrides } from "../core/policy/site-policy";
 import { isSensitiveFieldBlocked } from "../core/policy";
+import {
+  isLikelyDuplicate,
+  normalizeUrl,
+  type ApplicationRecord,
+} from "../core/applications";
 import { FIELD_KEYS, type FieldKey } from "../core/matching/field-key";
 import type { LearnedMapping as MatchingLearnedMapping } from "../core/matching";
 import {
@@ -87,6 +92,19 @@ function isLearningConflict(value: unknown): value is LearningConflict {
   );
 }
 
+function isApplicationRecord(value: unknown): value is ApplicationRecord {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.urlNorm === "string" &&
+    typeof value.host === "string" &&
+    (value.title === undefined || typeof value.title === "string") &&
+    (value.company === undefined || typeof value.company === "string") &&
+    typeof value.createdAt === "string" &&
+    (value.status === "started" || value.status === "submitted_by_user")
+  );
+}
+
 function readLearningCollection<T>(
   stored: unknown,
   key: string,
@@ -117,6 +135,21 @@ function readIgnoredLabels(stored: unknown): string[] {
     !stored.value.every((label) => typeof label === "string")
   ) {
     throw new Error("Invalid stored ignored labels.");
+  }
+  return stored.value;
+}
+
+function readApplications(stored: unknown): ApplicationRecord[] {
+  if (stored === undefined) {
+    return [];
+  }
+  if (
+    !isRecord(stored) ||
+    stored.schemaVersion !== STORAGE_SCHEMA_VERSION ||
+    !Array.isArray(stored.value) ||
+    !stored.value.every(isApplicationRecord)
+  ) {
+    throw new Error("Invalid stored applications.");
   }
   return stored.value;
 }
@@ -252,6 +285,48 @@ async function getFillValues(
   return { values };
 }
 
+async function handleRecordApplication(
+  storage: StorageAdapter,
+  message: Extract<RuntimeMessage, { type: "RECORD_APPLICATION" }>,
+): Promise<{ duplicate: boolean }> {
+  const stored = await storage.getItem("applications:v1");
+  const records = readApplications(stored);
+  const urlNorm = normalizeUrl(message.url);
+  const candidate = {
+    urlNorm,
+    title: message.title,
+    company: message.company,
+  };
+
+  const duplicate = isLikelyDuplicate(candidate, records);
+  if (!duplicate) {
+    const host = (() => {
+      try {
+        return new URL(message.url).hostname.toLowerCase().replace(/^www\./, "");
+      } catch {
+        return "";
+      }
+    })();
+
+    records.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      urlNorm,
+      host,
+      title: message.title,
+      company: message.company,
+      createdAt: new Date().toISOString(),
+      status: message.status,
+    });
+
+    await storage.setItem("applications:v1", {
+      schemaVersion: STORAGE_SCHEMA_VERSION,
+      value: records,
+    });
+  }
+
+  return { duplicate };
+}
+
 function readSiteOverrides(stored: unknown): SiteOverrides {
   if (stored === undefined) {
     return {};
@@ -368,6 +443,9 @@ export function registerBackground(
     }
     if (message.type === "LEARN_EVENT") {
       return handleLearningEvent(storage, message);
+    }
+    if (message.type === "RECORD_APPLICATION") {
+      return handleRecordApplication(storage, message);
     }
   });
 }
