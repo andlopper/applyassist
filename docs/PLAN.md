@@ -80,7 +80,7 @@ Depende de: T-13 | Ler: FDD §8 | Reqs: R-09
 Aceite: `normalizeUrl` e `isLikelyDuplicate` com testes; aviso no overlay; marcar "me candidatei"; lista na aba Candidaturas.
 
 ## Fase 3 — IA opcional
-### [ ] T-18 — SPIKE: login PKCE do OpenRouter na extensão
+### [x] T-18 — SPIKE: login PKCE do OpenRouter na extensão
 Depende de: T-09 | Ler: FDD §11.2 | Reqs: R-13
 Aceite: documento `docs/SPIKES.md` com o que funcionou/falhou em `launchWebAuthFlow`, URL de retorno, permissões necessárias e fallback de chave manual; nenhuma funcionalidade de produção além do necessário para provar o fluxo.
 
