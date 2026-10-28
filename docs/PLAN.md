@@ -54,7 +54,7 @@ Aceite: `scanFields` com candidatos a rótulo na ordem do §5; fixtures com camp
 Depende de: T-03, T-04, T-05, T-10 | Ler: FDD §4.3 · ADR-003 | Reqs: R-03, R-04
 Aceite: ordem exata do §4.3; fixtures PT/EN/ES com ≥ 90% de campos comuns reconhecidos (métrica impressa no teste); aprendido não revisado → `uncertain`; perguntas abertas detectadas.
 
-### [ ] T-12 — Preenchimento (filler)
+### [x] T-12 — Preenchimento (filler)
 Depende de: T-10 | Ler: FDD §6 | Reqs: R-05, R-21
 Aceite: setter nativo + `input`/`change`; `select`, `date`, `maxlength`; desfazer; nunca sobrescreve campo preenchido sem aceite; nenhum `click`/`submit` disparado (teste espiando eventos); fixture React controlada mantém o valor após re-render (teste de integração; e2e em T-23).
 
