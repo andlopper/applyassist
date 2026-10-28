@@ -155,7 +155,7 @@ O comando `open-paste-mode` abre o painel lateral (gesto válido). iframes de ou
 `src/shared/messages.ts` — união discriminada; toda mensagem validada (remetente + esquema) no destino.
 | Tipo | De → Para | Payload | Resposta |
 |---|---|---|---|
-| `GET_FILL_VALUES` | content → bg | `{ fieldKeys, host }` | só os valores pedidos e permitidos pelas configurações |
+| `GET_FILL_VALUES` | content → bg | `{ fieldKeys, host }` | `{ values: Partial<Record<FieldKey, string>> }`; falha explícita: `{ error: true }` |
 | `LEARN_EVENT` | content → bg | `{ labelNorm, value, kind, host }` | `ok` |
 | `GET_MAPPINGS` | content → bg | `{ host }` | mapeamentos aplicáveis |
 | `RECORD_APPLICATION` | content → bg | `{ url, title?, company?, status }` | `{duplicate: boolean}` |
@@ -205,6 +205,7 @@ Testes de prompt (T-20): tem papel, regras, few-shot, formato de saída, delimit
 
 ## §12 Interface
 - **Overlay (content, Shadow DOM):** canto superior direito; contadores (Prontos · Incertos · Abertas · Bloqueados); lista de campos com rótulo, sugestão truncada, chip de status e botão "Aplicar"; botões "Preencher prontos", "Desfazer", "Fechar". Ao focar um campo com sugestão, aparece um chip "Usar: … (Alt+A)". Perguntas abertas: botão "Gerar" (se IA conectada) e opção "Usar texto selecionado como descrição da vaga".
+- No overlay, campos desconhecidos ou sem sugestão ficam em "Abertas" e não podem ser aplicados; essa categorização provisória está registrada em Q-10.
 - **Options:** abas Perfil · Contexto · Aprendizado (tabela com status, conflitos, ações em lote) · Candidaturas · Sites e bloqueios · Conexão IA · Dados (exportar, importar, apagar tudo). Onboarding no primeiro uso: colar texto / enviar .txt, .md, .json / formulário simples; revisão antes de salvar.
 - **Side panel (modo colar):** campos "pergunta" e "descrição da vaga" (colados), botão Gerar, saída editável, Copiar. Não acessa a página.
 - Acessibilidade: `role="dialog"`, `aria-live="polite"`, foco gerenciado sem roubar foco dos campos da página, ESC fecha, contraste AA.

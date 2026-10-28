@@ -16,8 +16,12 @@ class FakeChromeRuntime {
     },
   };
 
-  send(message: unknown, sender: RuntimeSender): void {
-    this.listener?.(message, sender);
+  send(
+    message: unknown,
+    sender: RuntimeSender,
+    sendResponse?: (response?: unknown) => void,
+  ): boolean | void {
+    return this.listener?.(message, sender, sendResponse);
   }
 }
 
@@ -31,6 +35,43 @@ describe("R-01/R-17 background runtime message router", () => {
     runtime.send(message, { id: runtime.id, tab: { id: 2 } });
 
     expect(dispatch).toHaveBeenCalledWith(message, { id: runtime.id, tab: { id: 2 } });
+  });
+
+  it("returns an asynchronous dispatch response to the content script", async () => {
+    const runtime = new FakeChromeRuntime();
+    const dispatch = vi.fn(async () => ({ values: { email: "ana@example.test" } }));
+    registerMessageRouter(runtime, dispatch);
+    const sendResponse = vi.fn();
+
+    const keepChannelOpen = runtime.send(
+      { type: "GET_FILL_VALUES", fieldKeys: ["email"], host: "example.org" },
+      { id: runtime.id, tab: { id: 2 } },
+      sendResponse,
+    );
+
+    expect(keepChannelOpen).toBe(true);
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ values: { email: "ana@example.test" } });
+    });
+  });
+
+  it("returns an explicit error response when asynchronous dispatch fails", async () => {
+    const runtime = new FakeChromeRuntime();
+    const dispatch = vi.fn(async () => {
+      throw new Error("storage failure");
+    });
+    registerMessageRouter(runtime, dispatch);
+    const sendResponse = vi.fn();
+
+    runtime.send(
+      { type: "GET_FILL_VALUES", fieldKeys: ["email"], host: "example.org" },
+      { id: runtime.id, tab: { id: 2 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ error: true });
+    });
   });
 
   it("ignores messages from another extension", () => {

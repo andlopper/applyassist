@@ -11,3 +11,4 @@ Formato: `Q-nn` · pergunta · quem resolve · tarefa relacionada · status. A I
 - **Q-07** — Sites que o usuário usa: LinkedIn (bloqueado), Gupy, InHire, Sólides e outros. Verificar termos de InHire e Sólides diretamente (links dos termos ainda não localizados) e testar manualmente, sem enviar. — parcialmente resolvido
 - **Q-09** — Os formulários de InHire e Sólides usam Shadow DOM, iframes ou campos customizados (listas, radios)? Descobrir só em teste manual local antes de prometer suporte. (T-10, T-24) — aberto
 - **Q-08** — Formulários da Gupy usam Shadow DOM ou iframes? (T-10, T-24) — aberto
+- **Q-10** — Campos desconhecidos ou reconhecidos sem valor de perfil devem continuar agrupados em "Abertas" no overlay ou precisam de uma categoria própria? Até decidir, não são aplicáveis. (T-13) — aberto

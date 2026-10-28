@@ -4,6 +4,8 @@ import {
   type StorageAdapter,
 } from "../adapters/storage";
 import { getSitePolicy, type SiteOverrides } from "../core/policy/site-policy";
+import { isSensitiveFieldBlocked } from "../core/policy";
+import { FIELD_KEYS, type FieldKey } from "../core/matching/field-key";
 import { ptBr } from "../shared/i18n/pt-br";
 import { registerMessageRouter, type RuntimePort } from "./router";
 
@@ -30,9 +32,45 @@ export interface BackgroundChrome {
 }
 
 const SETTINGS_STORAGE_KEY = "settings:v1";
+const PROFILE_STORAGE_KEY = "profile:v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFieldKey(value: string): value is FieldKey {
+  return FIELD_KEYS.some((fieldKey) => fieldKey === value);
+}
+
+async function getFillValues(
+  storage: StorageAdapter,
+  fieldKeys: readonly string[],
+): Promise<{ values: Partial<Record<FieldKey, string>> } | { error: true }> {
+  const storedProfile = await storage.getItem(PROFILE_STORAGE_KEY);
+  if (storedProfile === undefined) {
+    return { values: {} };
+  }
+  if (
+    !isRecord(storedProfile) ||
+    storedProfile.schemaVersion !== STORAGE_SCHEMA_VERSION ||
+    !isRecord(storedProfile.value) ||
+    !isRecord(storedProfile.value.values)
+  ) {
+    return { error: true };
+  }
+
+  const values: Partial<Record<FieldKey, string>> = {};
+  for (const key of fieldKeys) {
+    if (!isFieldKey(key) || isSensitiveFieldBlocked(key)) {
+      continue;
+    }
+    const value = storedProfile.value.values[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      values[key] = value;
+    }
+  }
+
+  return { values };
 }
 
 function readSiteOverrides(stored: unknown): SiteOverrides {
@@ -142,7 +180,11 @@ export function registerBackground(
       console.error("Unable to report ApplyAssist activation failure.");
     });
   });
-  registerMessageRouter(chromeApi.runtime);
+  registerMessageRouter(chromeApi.runtime, (message) => {
+    if (message.type === "GET_FILL_VALUES") {
+      return getFillValues(storage, message.fieldKeys);
+    }
+  });
 }
 
 if (typeof chrome !== "undefined") {

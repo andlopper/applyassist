@@ -58,7 +58,7 @@ Aceite: ordem exata do §4.3; fixtures PT/EN/ES com ≥ 90% de campos comuns rec
 Depende de: T-10 | Ler: FDD §6 | Reqs: R-05, R-21
 Aceite: setter nativo + `input`/`change`; `select`, `date`, `maxlength`; desfazer; nunca sobrescreve campo preenchido sem aceite; nenhum `click`/`submit` disparado (teste espiando eventos); fixture React controlada mantém o valor após re-render (teste de integração; e2e em T-23).
 
-### [ ] T-13 — Overlay (Shadow DOM)
+### [x] T-13 — Overlay (Shadow DOM)
 Depende de: T-09, T-11, T-12 | Ler: FDD §12, §10 (GET_FILL_VALUES) | Reqs: R-05, R-26
 Aceite: painel com contadores e lista; chip ao focar campo; "Aplicar", "Preencher prontos", "Desfazer", ESC; textos de `pt-br.ts`; sem `innerHTML` com dados externos (teste com rótulo malicioso `<img onerror>`); acessível por teclado e com `aria-live`.
 

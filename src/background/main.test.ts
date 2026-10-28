@@ -1,12 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { FakeStorage } from "../adapters/storage";
 import { registerBackground, type BackgroundChrome } from "./main";
+import type { MessageListener, RuntimeSender } from "./router";
 
 class FakeBackgroundChrome implements BackgroundChrome {
+  private messageListener: MessageListener | undefined;
   readonly runtime = {
     id: "extension-id",
     onMessage: {
-      addListener: () => undefined,
+      addListener: (listener: MessageListener) => {
+        this.messageListener = listener;
+      },
+      removeListener: (listener: MessageListener) => {
+        if (this.messageListener === listener) {
+          this.messageListener = undefined;
+        }
+      },
     },
   };
   readonly action = {
@@ -40,6 +49,14 @@ class FakeBackgroundChrome implements BackgroundChrome {
 
   click(tab: { id?: number; url?: string }): void {
     this.clickListener?.(tab);
+  }
+
+  sendMessage(
+    message: unknown,
+    sender: RuntimeSender,
+    sendResponse: (response?: unknown) => void,
+  ): boolean | void {
+    return this.messageListener?.(message, sender, sendResponse);
   }
 }
 
@@ -179,5 +196,41 @@ describe("R-01/R-17 background action", () => {
 
     expect(chrome.badges).toEqual([{ text: "!", tabId: 10 }]);
     expect(chrome.titles.at(-1)?.title).toContain("não foi possível");
+  });
+
+  it("returns only requested, known, non-sensitive profile fields", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: {
+          fullName: "Ana Exemplo",
+          email: "ana@example.test",
+          city: "Recife",
+          cpf: "123.456.789-00",
+        },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    const keepChannelOpen = chrome.sendMessage(
+      {
+        type: "GET_FILL_VALUES",
+        fieldKeys: ["fullName", "email", "city", "cpf", "unknown"],
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 17 } },
+      sendResponse,
+    );
+    expect(keepChannelOpen).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({
+        values: { fullName: "Ana Exemplo", email: "ana@example.test", city: "Recife" },
+      });
+    });
   });
 });

@@ -6,7 +6,11 @@ export interface RuntimeSender {
   url?: string;
 }
 
-export type MessageListener = (message: unknown, sender: RuntimeSender) => void;
+export type MessageListener = (
+  message: unknown,
+  sender: RuntimeSender,
+  sendResponse?: (response?: unknown) => void,
+) => boolean | void;
 
 export interface RuntimePort {
   id: string;
@@ -16,13 +20,16 @@ export interface RuntimePort {
   };
 }
 
-export type RuntimeMessageHandler = (message: RuntimeMessage, sender: RuntimeSender) => void;
+export type RuntimeMessageHandler = (
+  message: RuntimeMessage,
+  sender: RuntimeSender,
+) => unknown | Promise<unknown> | void;
 
 export function registerMessageRouter(
   runtime: RuntimePort,
   dispatch?: RuntimeMessageHandler,
 ): () => void {
-  const listener: MessageListener = (message, sender) => {
+  const listener: MessageListener = (message, sender, sendResponse) => {
     if (sender.id !== runtime.id) {
       return;
     }
@@ -46,7 +53,17 @@ export function registerMessageRouter(
       return;
     }
 
-    dispatch?.(message, sender);
+    const response = dispatch?.(message, sender);
+    if (response instanceof Promise) {
+      void response.then(
+        (value) => sendResponse?.(value),
+        () => sendResponse?.({ error: true }),
+      );
+      return true;
+    }
+    if (response !== undefined) {
+      sendResponse?.(response);
+    }
   };
 
   runtime.onMessage.addListener(listener);
