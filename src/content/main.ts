@@ -1,5 +1,6 @@
 import { mountOverlay, type OverlayController, type OverlayMessageSender } from "./overlay";
 import { mountLearningCapture } from "./learning";
+import { createAiGenerator, type AiGenerationPort } from "./ai";
 
 const ACTIVE_SYMBOL = Symbol.for("applyassist.active");
 const OVERLAY_CONTROLLER_SYMBOL = Symbol.for("applyassist.overlay-controller");
@@ -9,6 +10,7 @@ declare const chrome:
   | {
       runtime: {
         sendMessage: OverlayMessageSender;
+        connect(options: { name: string }): AiGenerationPort;
       };
     }
   | undefined;
@@ -55,6 +57,7 @@ if (typeof window !== "undefined") {
           Reflect.deleteProperty(globalThis, ACTIVE_SYMBOL);
           Reflect.deleteProperty(globalThis, OVERLAY_CONTROLLER_SYMBOL);
         },
+        createAiGenerator(() => chrome.runtime.connect({ name: "AI_GENERATE" })),
       );
       stopLearningCapture = mountLearningCapture(document, (message) =>
         chrome.runtime.sendMessage(message),

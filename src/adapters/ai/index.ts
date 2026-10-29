@@ -21,6 +21,15 @@ export interface AiProvider {
   generate(req: GenerateRequest, signal: AbortSignal): AsyncIterable<string>;
 }
 
+export class AiProviderError extends Error {
+  constructor(
+    readonly code: "daily-limit" | "unavailable",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export interface OpenRouterModel {
   id: string;
   label: string;
@@ -78,16 +87,31 @@ function toContentText(content: string | Array<{ text?: string } | string> | und
 function mapOpenRouterError(status: number): Error {
   switch (status) {
     case 401:
-      return new Error("Sua sessão do OpenRouter expirou. Reconecte a conta ou insira uma chave válida.");
+      return new AiProviderError(
+        "unavailable",
+        "Sua sessão do OpenRouter expirou. Reconecte a conta ou insira uma chave válida.",
+      );
     case 402:
-      return new Error("O OpenRouter indicou que não há créditos suficientes para esta geração.");
+      return new AiProviderError(
+        "unavailable",
+        "O OpenRouter indicou que não há créditos suficientes para esta geração.",
+      );
     case 429:
-      return new Error("O limite do plano gratuito do OpenRouter foi atingido. Tente novamente mais tarde ou use outro modelo.");
+      return new AiProviderError(
+        "daily-limit",
+        "O limite do plano gratuito do OpenRouter foi atingido. Tente novamente mais tarde ou use outro modelo.",
+      );
     default:
       if (status >= 500) {
-        return new Error("O OpenRouter não respondeu corretamente. Tente novamente em instantes.");
+        return new AiProviderError(
+          "unavailable",
+          "O OpenRouter não respondeu corretamente. Tente novamente em instantes.",
+        );
       }
-      return new Error("O OpenRouter não respondeu como esperado. Tente novamente.");
+      return new AiProviderError(
+        "unavailable",
+        "O OpenRouter não respondeu como esperado. Tente novamente.",
+      );
   }
 }
 

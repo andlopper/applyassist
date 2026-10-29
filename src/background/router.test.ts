@@ -97,18 +97,15 @@ describe("R-01/R-17 background runtime message router", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("accepts side-panel AI requests without a tab sender", () => {
+  it("accepts AI availability requests from the active content tab", () => {
     const runtime = new FakeChromeRuntime();
     const dispatch = vi.fn();
     registerMessageRouter(runtime, dispatch);
-    const message = {
-      type: "AI_ABORT",
-      requestId: "request-1",
-    };
+    const message = { type: "AI_STATUS" };
 
-    runtime.send(message, { id: runtime.id });
+    runtime.send(message, { id: runtime.id, tab: { id: 2 } });
 
-    expect(dispatch).toHaveBeenCalledWith(message, { id: runtime.id });
+    expect(dispatch).toHaveBeenCalledWith(message, { id: runtime.id, tab: { id: 2 } });
   });
 
   it("ignores known message types with an invalid payload schema", () => {

@@ -160,10 +160,11 @@ O comando `open-paste-mode` abre o painel lateral (gesto válido). iframes de ou
 | `LEARN_EVENT` | content → bg | `{ labelNorm, value, kind, host }` | `ok` |
 | `GET_MAPPINGS` | content → bg | `{ host }` | mapeamentos aplicáveis |
 | `RECORD_APPLICATION` | content → bg | `{ url, title?, company?, status }` | `{duplicate: boolean}` |
-| `AI_GENERATE` | content/sidepanel → bg (porta) | `GenerateRequest` | fluxo de pedaços de texto + fim/erro |
-| `AI_ABORT` | → bg | `{ requestId }` | `ok` |
+| `AI_STATUS` | content → bg | `{}` | `{ available: boolean }` |
+| `AI_GENERATE` | content/sidepanel → bg (porta `AI_GENERATE`) | `{ question, language, maxLength?, selectedText? }` | `AI_CHUNK` em fluxo + `AI_DONE`/erro |
+| `AI_ABORT` | content/sidepanel → bg (mesma porta) | `{}` | cancela o `AbortSignal` da geração ativa |
 | `DEACTIVATE` | bg → content | — | — |
-Regras: `sender.id === chrome.runtime.id`; mensagens de content exigem `sender.tab`; tipo desconhecido é ignorado (loga só o tipo). O content nunca recebe o perfil inteiro, nem chaves.
+Regras: `sender.id === chrome.runtime.id`; mensagens de content exigem `sender.tab`; tipo desconhecido é ignorado (loga só o tipo). O content nunca recebe o perfil inteiro, nem chaves. A porta de geração recebe somente a pergunta e, se a pessoa marcar a opção correspondente, o texto selecionado manualmente; o background lê as configurações, monta o contexto do perfil após a redação e guarda a chave fora do content.
 
 ## §11 IA
 ### §11.1 Porta
@@ -185,7 +186,7 @@ interface AiProvider {
 - Geração: `POST https://openrouter.ai/api/v1/chat/completions` com `stream: true`, `messages`, `provider: { data_collection: "deny" }`; ler SSE; suportar `AbortSignal`.
 - Erros → mensagens pt-BR: 401 (reconectar), 402 (sem créditos), 429 (limite do plano gratuito atingido), 5xx/rede (tente novamente), nenhum modelo disponível com `deny` (explicar e sugerir outro modelo).
 ### §11.3 Privacidade
-Enviar apenas: pergunta, `profileContext` (≤ 2.000 caracteres), `jobContext` (≤ 3.000, só seleção/colagem do usuário). `redactSensitive()` remove CPF, RG, telefones, e-mails, URLs de perfil e sequências longas de dígitos. A tela de conexão mostra exatamente o que será enviado.
+Enviar apenas: pergunta, `profileContext` (≤ 2.000 caracteres, montado no background apenas com campos não sensíveis), `jobContext` (≤ 3.000, só seleção/colagem explicitamente feita pela pessoa). `redactSensitive()` remove CPF, RG, telefones, e-mails, URLs de perfil e sequências longas de dígitos; linhas de contexto rotuladas como dado sensível também são descartadas. A tela de conexão mostra exatamente o que será enviado.
 ### §11.4 Prompt (construído por função pura em `src/core/prompts`)
 Sistema:
 ```
@@ -205,7 +206,7 @@ Testes de prompt (T-20): tem papel, regras, few-shot, formato de saída, delimit
 `POST http://localhost:11434/api/chat` em streaming com o modo "pensar" desligado quando o modelo suportar. O Ollama bloqueia origens de extensão por padrão: exige `OLLAMA_ORIGINS` com a origem **exata** da extensão (`chrome-extension://<id>`), portanto o ID precisa ser estável (campo `key` público no manifesto de desenvolvimento). Documentar em `docs/SETUP-WINDOWS.md`.
 
 ## §12 Interface
-- **Overlay (content, Shadow DOM):** canto superior direito; contadores (Prontos · Incertos · Abertas · Bloqueados); lista de campos com rótulo, sugestão truncada, chip de status e botão "Aplicar"; botões "Preencher prontos", "Desfazer", "Fechar". Ao focar um campo com sugestão, aparece um chip "Usar: … (Alt+A)". Perguntas abertas: botão "Gerar" (se IA conectada) e opção "Usar texto selecionado como descrição da vaga".
+- **Overlay (content, Shadow DOM):** canto superior direito; contadores (Prontos · Incertos · Abertas · Bloqueados); lista de campos com rótulo, sugestão truncada, chip de status e botão "Aplicar"; botões "Preencher prontos", "Desfazer", "Fechar". Ao focar um campo com sugestão, aparece um chip "Usar: … (Alt+A)". Perguntas abertas: botão "Gerar" (se IA conectada), resposta transmitida diretamente ao campo, opções de desfazer/cancelar e opção explícita "Usar texto selecionado como descrição da vaga".
 - No overlay, campos desconhecidos ou sem sugestão ficam em "Abertas" e não podem ser aplicados; essa categorização provisória está registrada em Q-10.
 - **Options:** abas Perfil · Contexto · Aprendizado (tabela com status, conflitos, ações em lote) · Candidaturas · Sites e bloqueios · Conexão IA · Dados (exportar, importar, apagar tudo). A revisão oferece edição, exclusão, aprovação e bloqueio de rótulos; conflitos podem manter/substituir o perfil ou criar uma resposta de escopo `job`. Importação valida o JSON antes de alterar os dados; exportação inclui perfil, configurações e aprendizado, nunca chaves de IA. Apagar tudo exige confirmação. Onboarding no primeiro uso: colar texto / enviar .txt, .md, .json / formulário simples; revisão antes de salvar.
 - **Side panel (modo colar):** campos "pergunta" e "descrição da vaga" (colados), botão Gerar, saída editável, Copiar. Não acessa a página.

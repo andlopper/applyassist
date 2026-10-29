@@ -163,8 +163,9 @@ export function fillFields(
 
 export function undoFieldFill(
   element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  previousValue?: string,
 ): boolean {
-  const previous = previousValueByElement.get(element);
+  const previous = previousValue ?? previousValueByElement.get(element);
   if (previous === undefined) {
     return false;
   }
@@ -195,7 +196,7 @@ export function createFillHistory(): {
         return false;
       }
 
-      return undoFieldFill(lastEntry.element);
+      return undoFieldFill(lastEntry.element, lastEntry.previous);
     },
     clear() {
       entries.length = 0;

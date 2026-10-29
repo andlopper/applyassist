@@ -92,7 +92,7 @@ Aceite: `listModels`, `generate` em streaming (SSE) com `AbortSignal`, `provider
 Depende de: T-08 | Ler: FDD §11.3, §11.4 | Reqs: R-14, R-19
 Aceite: função pura; testes de prompt (papel, regras, few-shot, formato, delimitadores não confiáveis, sem `TODO`, `maxLength`, idioma); injeção de instruções no `job_context` não altera as regras (teste estrutural); limites de contexto.
 
-### [ ] T-21 — Botão "Gerar" no overlay
+### [x] T-21 — Botão "Gerar" no overlay
 Depende de: T-13, T-19, T-20 | Ler: FDD §10 (AI_GENERATE), §12 | Reqs: R-13, R-15
 Aceite: streaming direto no campo, desfazer, cancelar; texto da vaga só da seleção do usuário; sem dados sensíveis na requisição (teste inspecionando o payload); mensagem amigável para limite diário.
 

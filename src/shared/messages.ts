@@ -1,17 +1,20 @@
 import { FIELD_KEYS, type FieldKey } from "../core/matching/field-key";
 
-export interface GenerateRequestMessage {
+export interface AiGenerationCommand {
+  type: "AI_GENERATE";
   question: string;
-  maxLength?: number;
   language: "pt" | "en" | "es";
-  model: string;
-  profileContext: string;
-  jobContext?: {
-    title?: string;
-    company?: string;
-    selectedText?: string;
-  };
+  maxLength?: number;
+  selectedText?: string;
 }
+
+export type AiGenerationPortCommand = AiGenerationCommand | { type: "AI_ABORT" };
+
+export type AiGenerationPortEvent =
+  | { type: "AI_CHUNK"; text: string }
+  | { type: "AI_DONE" }
+  | { type: "AI_CANCELLED" }
+  | { type: "AI_ERROR"; code: "daily-limit" | "unavailable" };
 
 export type RuntimeMessage =
   | { type: "GET_FILL_VALUES"; fieldKeys: string[]; host: string }
@@ -24,21 +27,21 @@ export type RuntimeMessage =
       host: string;
     }
   | { type: "GET_MAPPINGS"; host: string }
-  | {
-      type: "RECORD_APPLICATION";
-      url: string;
-      title?: string;
-      company?: string;
-      status: "started" | "submitted_by_user";
-    }
-  | ({ type: "AI_GENERATE" } & GenerateRequestMessage)
-  | { type: "AI_ABORT"; requestId: string };
+    | {
+        type: "RECORD_APPLICATION";
+        url: string;
+        title?: string;
+        company?: string;
+        status: "started" | "submitted_by_user";
+      }
+    | { type: "AI_STATUS" };
 
 const CONTENT_MESSAGE_TYPES = new Set([
   "GET_FILL_VALUES",
   "LEARN_EVENT",
   "GET_MAPPINGS",
   "RECORD_APPLICATION",
+  "AI_STATUS",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,29 +60,28 @@ function isFieldKey(value: unknown): value is FieldKey {
   return typeof value === "string" && FIELD_KEYS.some((fieldKey) => fieldKey === value);
 }
 
-function isGenerateRequestMessage(value: Record<string, unknown>): boolean {
+export function isAiGenerationPortCommand(value: unknown): value is AiGenerationPortCommand {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+  if (value.type === "AI_ABORT") {
+    return hasOnlyKeys(value, ["type"]);
+  }
   if (
+    value.type !== "AI_GENERATE" ||
+    !hasOnlyKeys(value, ["type", "question", "language", "maxLength", "selectedText"]) ||
     typeof value.question !== "string" ||
+    value.question.trim().length === 0 ||
+    (value.language !== "pt" && value.language !== "en" && value.language !== "es") ||
     (value.maxLength !== undefined &&
       (typeof value.maxLength !== "number" ||
         !Number.isInteger(value.maxLength) ||
         value.maxLength < 0)) ||
-    (value.language !== "pt" && value.language !== "en" && value.language !== "es") ||
-    typeof value.model !== "string" ||
-    typeof value.profileContext !== "string"
+    (value.selectedText !== undefined && typeof value.selectedText !== "string")
   ) {
     return false;
   }
-
-  if (value.jobContext === undefined) {
-    return true;
-  }
-
-  return (
-    isRecord(value.jobContext) &&
-    hasOnlyKeys(value.jobContext, ["title", "company", "selectedText"]) &&
-    hasOptionalStrings(value.jobContext, ["title", "company", "selectedText"])
-  );
+  return true;
 }
 
 export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
@@ -113,20 +115,8 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
         hasOptionalStrings(value, ["title", "company"]) &&
         (value.status === "started" || value.status === "submitted_by_user")
       );
-    case "AI_GENERATE":
-      return (
-        hasOnlyKeys(value, [
-          "type",
-          "question",
-          "maxLength",
-          "language",
-          "model",
-          "profileContext",
-          "jobContext",
-        ]) && isGenerateRequestMessage(value)
-      );
-    case "AI_ABORT":
-      return hasOnlyKeys(value, ["type", "requestId"]) && typeof value.requestId === "string";
+    case "AI_STATUS":
+      return hasOnlyKeys(value, ["type"]);
     default:
       return false;
   }

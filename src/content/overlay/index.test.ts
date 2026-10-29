@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ptBr } from "../../shared/i18n/pt-br";
-import type { RuntimeMessage } from "../../shared/messages";
+import type { AiGenerationCommand, RuntimeMessage } from "../../shared/messages";
+import { AiGenerationError, type AiGenerator } from "../ai";
 import { mountOverlay } from "./index";
 
 class FakeOverlayRuntime {
@@ -17,9 +18,44 @@ class FakeOverlayRuntime {
     if (message.type === "GET_MAPPINGS") {
       return { mappings: this.learnedMappings };
     }
+    if (message.type === "AI_STATUS") {
+      return { available: true };
+    }
 
     return this.response;
   });
+}
+
+class FakeAiGenerator {
+  readonly requests: AiGenerationCommand[] = [];
+
+  constructor(
+    private readonly chunks: readonly string[],
+    private readonly error?: Error,
+  ) {}
+
+  readonly generate: AiGenerator = async (command, signal, onChunk) => {
+    this.requests.push(command);
+    for (const chunk of this.chunks) {
+      onChunk(chunk);
+    }
+    if (this.error) {
+      throw this.error;
+    }
+    if (signal.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+  };
+}
+
+class FakeCancelableAiGenerator {
+  readonly generate: AiGenerator = async (_command, signal, onChunk) => {
+    onChunk("Resposta parcial");
+    await new Promise<void>((resolve) => {
+      signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    throw new DOMException("The operation was aborted.", "AbortError");
+  };
 }
 
 function addField(labelText: string, type = "text"): HTMLInputElement {
@@ -75,6 +111,124 @@ describe("content overlay", () => {
     expect(root?.textContent).toContain(maliciousLabel);
     expect(root?.querySelectorAll(".field-label").item(1)?.textContent?.length).toBe(161);
 
+    overlay.dispose();
+  });
+
+  it("offers AI generation for an open application question", async () => {
+    document.body.replaceChildren();
+    addField("Conte sobre sua experiência");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator([]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    expect(root?.querySelector('[data-action="generate"]')?.textContent).toBe("Gerar");
+
+    overlay.dispose();
+  });
+
+  it("streams a user-requested answer into the field and allows undo", async () => {
+    document.body.replaceChildren();
+    const input = addField("Conte sobre sua experiência");
+    input.value = "Resposta anterior";
+    const selectedText = document.createTextNode("Descrição selecionada pelo usuário.");
+    document.body.append(selectedText);
+    const range = document.createRange();
+    range.selectNodeContents(selectedText);
+    document.getSelection()?.addRange(range);
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator(["Experiência ", "profissional."]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLInputElement>('[data-action="use-selected-text"]')?.click();
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+
+    await vi.waitFor(() => {
+      expect(input.value).toBe("Experiência profissional.");
+    });
+    expect(generator.requests).toEqual([
+      {
+        type: "AI_GENERATE",
+        question: "Conte sobre sua experiência",
+        language: "pt",
+        selectedText: "Descrição selecionada pelo usuário.",
+      },
+    ]);
+    expect(root?.textContent).toContain(ptBr.overlayAiGenerated);
+
+    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
+    expect(input.value).toBe("Resposta anterior");
+
+    overlay.dispose();
+  });
+
+  it("announces the free-tier generation limit in friendly Portuguese", async () => {
+    document.body.replaceChildren();
+    addField("Why are you interested?");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator([], new AiGenerationError("daily-limit"));
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiDailyLimit);
+    });
+    expect(root?.textContent).not.toContain("daily-limit");
+    overlay.dispose();
+  });
+
+  it("does not include page text unless the user opts in to the selection", async () => {
+    document.body.replaceChildren();
+    addField("Why are you interested?");
+    const selectedText = document.createTextNode("Unselected job description");
+    document.body.append(selectedText);
+    const range = document.createRange();
+    range.selectNodeContents(selectedText);
+    document.getSelection()?.addRange(range);
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator(["A resposta."]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    document
+      .getElementById("applyassist-overlay")
+      ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="generate"]')
+      ?.click();
+
+    await vi.waitFor(() => {
+      expect(generator.requests).toHaveLength(1);
+    });
+    expect(generator.requests[0]).not.toHaveProperty("selectedText");
+    overlay.dispose();
+  });
+
+  it("cancels a streaming response and keeps partial text undoable", async () => {
+    document.body.replaceChildren();
+    const input = addField("Conte sobre sua experiência");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeCancelableAiGenerator();
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+    await vi.waitFor(() => {
+      expect(input.value).toBe("Resposta parcial");
+    });
+    root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.click();
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiCancelled);
+    });
+
+    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
+    expect(input.value).toBe("");
     overlay.dispose();
   });
 
@@ -189,13 +343,13 @@ describe("content overlay", () => {
     await overlay.refresh();
     addField("Cidade");
     await vi.waitFor(() => {
-      expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
+      expect(runtime.sendMessage).toHaveBeenCalledTimes(6);
     });
 
     overlay.dispose();
     addField("Nome completo");
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(6);
   });
 
   it("announces a generic error when loading suggestions fails", async () => {

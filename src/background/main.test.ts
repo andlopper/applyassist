@@ -1,10 +1,106 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  AiProviderError,
+  type AiProvider,
+  type GenerateRequest,
+} from "../adapters/ai";
 import { FakeStorage } from "../adapters/storage";
-import { registerBackground, type BackgroundChrome } from "./main";
+import {
+  registerBackground,
+  type BackgroundAiPort,
+  type BackgroundChrome,
+} from "./main";
+import type { AiGenerationPortEvent } from "../shared/messages";
 import type { MessageListener, RuntimeSender } from "./router";
+
+class FakeBackgroundAiPort implements BackgroundAiPort {
+  name = "AI_GENERATE";
+  sender?: RuntimeSender;
+  readonly events: AiGenerationPortEvent[] = [];
+  private readonly messageListeners = new Set<(message: unknown) => void>();
+  private readonly disconnectListeners = new Set<() => void>();
+
+  readonly onMessage = {
+    addListener: (listener: (message: unknown) => void): void => {
+      this.messageListeners.add(listener);
+    },
+    removeListener: (listener: (message: unknown) => void): void => {
+      this.messageListeners.delete(listener);
+    },
+  };
+  readonly onDisconnect = {
+    addListener: (listener: () => void): void => {
+      this.disconnectListeners.add(listener);
+    },
+    removeListener: (listener: () => void): void => {
+      this.disconnectListeners.delete(listener);
+    },
+  };
+
+  postMessage(message: AiGenerationPortEvent): void {
+    this.events.push(message);
+  }
+
+  disconnect(): void {
+    for (const listener of this.disconnectListeners) {
+      listener();
+    }
+  }
+
+  send(message: unknown): void {
+    for (const listener of this.messageListeners) {
+      listener(message);
+    }
+  }
+}
+
+class FakeAiProvider implements AiProvider {
+  readonly id = "openrouter" as const;
+  readonly requests: GenerateRequest[] = [];
+
+  constructor(private readonly error?: Error) {}
+
+  async listModels(): Promise<{ id: string; label: string }[]> {
+    return [];
+  }
+
+  async *generate(request: GenerateRequest): AsyncGenerator<string> {
+    this.requests.push(request);
+    if (this.error) {
+      throw this.error;
+    }
+    yield "Resposta ";
+    yield "gerada.";
+  }
+}
+
+class FakeWaitingAiProvider implements AiProvider {
+  readonly id = "openrouter" as const;
+  started = false;
+  aborted = false;
+
+  async listModels(): Promise<{ id: string; label: string }[]> {
+    return [];
+  }
+
+  async *generate(_request: GenerateRequest, signal: AbortSignal): AsyncGenerator<string> {
+    this.started = true;
+    await new Promise<void>((resolve) => {
+      signal.addEventListener(
+        "abort",
+        () => {
+          this.aborted = true;
+          resolve();
+        },
+        { once: true },
+      );
+    });
+  }
+}
 
 class FakeBackgroundChrome implements BackgroundChrome {
   private messageListener: MessageListener | undefined;
+  private readonly connectListeners = new Set<(port: BackgroundAiPort) => void>();
   readonly runtime = {
     id: "extension-id",
     onMessage: {
@@ -15,6 +111,11 @@ class FakeBackgroundChrome implements BackgroundChrome {
         if (this.messageListener === listener) {
           this.messageListener = undefined;
         }
+      },
+    },
+    onConnect: {
+      addListener: (listener: (port: BackgroundAiPort) => void) => {
+        this.connectListeners.add(listener);
       },
     },
   };
@@ -57,6 +158,12 @@ class FakeBackgroundChrome implements BackgroundChrome {
     sendResponse: (response?: unknown) => void,
   ): boolean | void {
     return this.messageListener?.(message, sender, sendResponse);
+  }
+
+  connect(port: BackgroundAiPort): void {
+    for (const listener of this.connectListeners) {
+      listener(port);
+    }
   }
 }
 
@@ -508,5 +615,268 @@ describe("R-01/R-17 background action", () => {
       expect(sendResponse).toHaveBeenCalledWith({ error: true });
     });
     expect(await storage.getItem("mappings:v1")).toEqual(invalidCollection);
+  });
+
+  it("sends only redacted profile facts and explicitly selected job text to AI", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const provider = new FakeAiProvider();
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: {
+        provider: "openrouter",
+        openrouter: { model: "test-model" },
+      },
+    });
+    await storage.setItem("secrets:v1", { apiKey: "test-api-key" });
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: {
+          fullName: "Ana Exemplo",
+          email: "ana@example.test",
+          phone: "+55 11 99999-1111",
+          city: "Recife",
+          currentRole: "Analista de produto",
+          cpf: "123.456.789-00",
+          rg: "12.345.678-9",
+          birthDate: "1990-01-01",
+          address: "Rua Particular, 123",
+          postalCode: "12345-678",
+          gender: "não informado",
+        },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage, () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 32 } };
+    chrome.connect(port);
+
+    port.send({
+      type: "AI_GENERATE",
+      question: "Conte sobre sua experiência — contato ana@example.test",
+      language: "pt",
+      selectedText:
+        "Descrição da vaga\nE-mail: recrutamento@example.test\nAddress:\nRua Particular 123\nBirth date:\n1990-01-01\nResponsabilidades: liderar projetos.",
+    });
+
+    await vi.waitFor(() => {
+      expect(port.events.at(-1)).toEqual({ type: "AI_DONE" });
+    });
+    const request = provider.requests[0];
+    expect(request?.model).toBe("test-model");
+    expect(request?.question).not.toContain("ana@example.test");
+    expect(request?.profileContext).toContain("Ana Exemplo");
+    expect(request?.profileContext).toContain("Recife");
+    expect(request?.profileContext).not.toContain("ana@example.test");
+    expect(request?.profileContext).not.toContain("+55 11 99999-1111");
+    expect(request?.profileContext).not.toContain("123.456.789-00");
+    expect(request?.profileContext).not.toContain("12.345.678-9");
+    expect(request?.profileContext).not.toContain("1990-01-01");
+    expect(request?.profileContext).not.toContain("Rua Particular");
+    expect(request?.profileContext).not.toContain("12345-678");
+    expect(request?.profileContext).not.toContain("não informado");
+    expect(request?.jobContext?.selectedText).toContain("Descrição da vaga");
+    expect(request?.jobContext?.selectedText).toContain("Responsabilidades");
+    const payload = JSON.stringify(request);
+    expect(payload).not.toContain("recrutamento@example.test");
+    expect(payload).not.toContain("Rua Particular 123");
+    expect(payload).not.toContain("1990-01-01");
+    expect(payload).not.toContain("test-api-key");
+    port.disconnect();
+  });
+
+  it("reports a friendly daily-limit code without exposing provider details", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const provider = new FakeAiProvider(
+      new AiProviderError("daily-limit", "private provider detail"),
+    );
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "openrouter", openrouter: { model: "test-model" } },
+    });
+    await storage.setItem("secrets:v1", { apiKey: "test-api-key" });
+    registerBackground(chrome, storage, () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 33 } };
+    chrome.connect(port);
+
+    port.send({
+      type: "AI_GENERATE",
+      question: "Why?",
+      language: "en",
+    });
+
+    await vi.waitFor(() => {
+      expect(port.events).toContainEqual({ type: "AI_ERROR", code: "daily-limit" });
+    });
+    expect(JSON.stringify(port.events)).not.toContain("private provider detail");
+    port.disconnect();
+  });
+
+  it("rejects AI ports opened by another extension", () => {
+    const chrome = new FakeBackgroundChrome();
+    const provider = new FakeAiProvider();
+    registerBackground(chrome, new FakeStorage(), () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: "another-extension", tab: { id: 34 } };
+
+    chrome.connect(port);
+
+    expect(port.events).toEqual([]);
+    port.send({ type: "AI_GENERATE", question: "Why?", language: "en" });
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("accepts an AI port from an extension page", async () => {
+    const chrome = new FakeBackgroundChrome();
+    registerBackground(chrome, new FakeStorage());
+    const port = new FakeBackgroundAiPort();
+    port.sender = {
+      id: chrome.runtime.id,
+      url: `chrome-extension://${chrome.runtime.id}/sidepanel.html`,
+    };
+    chrome.connect(port);
+
+    port.send({ type: "AI_GENERATE", question: "Why?", language: "en" });
+
+    await vi.waitFor(() => {
+      expect(port.events).toContainEqual({ type: "AI_ERROR", code: "unavailable" });
+    });
+    port.disconnect();
+  });
+
+  it("ignores an AI content port without a valid tab ID", () => {
+    const chrome = new FakeBackgroundChrome();
+    const provider = new FakeAiProvider();
+    registerBackground(chrome, new FakeStorage(), () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: Number.NaN } };
+    chrome.connect(port);
+
+    port.send({ type: "AI_GENERATE", question: "Why?", language: "en" });
+
+    expect(port.events).toEqual([]);
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("reports AI as unavailable when no provider is configured", async () => {
+    const chrome = new FakeBackgroundChrome();
+    registerBackground(chrome, new FakeStorage());
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "AI_STATUS" },
+      { id: chrome.runtime.id, tab: { id: 35 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ available: false });
+    });
+  });
+
+  it("reports AI as unavailable when the configured provider has no key", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "openrouter", openrouter: { model: "test-model" } },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "AI_STATUS" },
+      { id: chrome.runtime.id, tab: { id: 36 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ available: false });
+    });
+  });
+
+  it("reports AI as unavailable when a different provider is configured", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "none" },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "AI_STATUS" },
+      { id: chrome.runtime.id, tab: { id: 39 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ available: false });
+    });
+  });
+
+  it("returns an explicit error for malformed stored AI settings", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("settings:v1", { schemaVersion: 0, value: {} });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "AI_STATUS" },
+      { id: chrome.runtime.id, tab: { id: 40 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ error: true });
+    });
+  });
+
+  it("aborts the provider signal when the AI port receives cancellation", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const provider = new FakeWaitingAiProvider();
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "openrouter", openrouter: { model: "test-model" } },
+    });
+    await storage.setItem("secrets:v1", { apiKey: "test-api-key" });
+    registerBackground(chrome, storage, () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 37 } };
+    chrome.connect(port);
+
+    port.send({ type: "AI_GENERATE", question: "Why?", language: "en" });
+    await vi.waitFor(() => {
+      expect(provider.started).toBe(true);
+    });
+    port.send({ type: "AI_ABORT" });
+
+    await vi.waitFor(() => {
+      expect(provider.aborted).toBe(true);
+    });
+    expect(port.events).toEqual([]);
+    port.disconnect();
+  });
+
+  it("rejects malformed generation commands without running the provider", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const provider = new FakeAiProvider();
+    registerBackground(chrome, new FakeStorage(), () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 38 } };
+    chrome.connect(port);
+
+    port.send({ type: "AI_GENERATE", question: "", language: "pt" });
+
+    expect(port.events).toEqual([{ type: "AI_ERROR", code: "unavailable" }]);
+    expect(provider.requests).toEqual([]);
+    port.disconnect();
   });
 });

@@ -8,6 +8,7 @@ import { createFillHistory, fillField, type FillResult } from "../filler";
 import { scanFields, type FieldCandidate } from "../scanner";
 import { ptBr } from "../../shared/i18n/pt-br";
 import type { RuntimeMessage } from "../../shared/messages";
+import { AiGenerationError, type AiGenerator } from "../ai";
 
 type OverlayStatus = "ready" | "uncertain" | "open" | "blocked";
 
@@ -20,7 +21,11 @@ type OverlayField =
     }
   | {
       candidate: FieldCandidate;
-      status: "open" | "blocked";
+      status: "open";
+    }
+  | {
+      candidate: FieldCandidate;
+      status: "blocked";
     };
 
 export type OverlayMessageSender = (message: RuntimeMessage) => Promise<unknown>;
@@ -90,6 +95,8 @@ const OVERLAY_STYLES = `
   .actions { justify-content: flex-start; margin-top: 12px; }
   .live { min-height: 1.45em; }
   .field-chip { margin-top: 8px; }
+  .ai-controls { display: grid; gap: 8px; margin-top: 12px; }
+  .ai-selection { align-items: flex-start; display: flex; gap: 8px; }
 `;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +117,13 @@ function parseFillValues(response: unknown): Partial<Record<FieldKey, string>> {
   }
 
   return values;
+}
+
+function parseAiAvailability(response: unknown): boolean {
+  if (!isRecord(response) || typeof response.available !== "boolean") {
+    throw new Error("Invalid AI_STATUS response.");
+  }
+  return response.available;
 }
 
 function parseLearnedMappings(response: unknown): Record<string, LearnedMapping> {
@@ -193,6 +207,18 @@ function countStatus(fields: readonly OverlayField[], status: OverlayStatus): nu
   return fields.filter((field) => field.status === status).length;
 }
 
+function canGenerateForField(field: OverlayField): field is Extract<OverlayField, { status: "open" }> {
+  if (field.status !== "open") {
+    return false;
+  }
+  const element = field.candidate.element;
+  return (
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLInputElement &&
+      (element.type === "text" || element.type === "search"))
+  );
+}
+
 function createButton(
   ownerDocument: Document,
   label: string,
@@ -211,6 +237,7 @@ export function mountOverlay(
   ownerDocument: Document,
   sendMessage: OverlayMessageSender,
   onClose?: () => void,
+  generateAi?: AiGenerator,
 ): OverlayController {
   const host = ownerDocument.createElement("div");
   host.id = HOST_ID;
@@ -259,6 +286,32 @@ export function mountOverlay(
   status.textContent = ptBr.overlayLoading;
   panel.append(status);
 
+  const aiControls = ownerDocument.createElement("div");
+  aiControls.className = "ai-controls";
+  aiControls.hidden = true;
+  const selectedTextLabel = ownerDocument.createElement("label");
+  selectedTextLabel.className = "ai-selection";
+  const selectedTextCheckbox = ownerDocument.createElement("input");
+  selectedTextCheckbox.type = "checkbox";
+  selectedTextCheckbox.dataset.action = "use-selected-text";
+  const selectedTextDescription = ownerDocument.createElement("span");
+  selectedTextDescription.textContent = ptBr.overlayAiUseSelection;
+  selectedTextLabel.append(selectedTextCheckbox, selectedTextDescription);
+  const languageSelect = ownerDocument.createElement("select");
+  languageSelect.setAttribute("aria-label", ptBr.overlayAiLanguage);
+  for (const [value, label] of [
+    ["pt", ptBr.overlayAiLanguagePt],
+    ["en", ptBr.overlayAiLanguageEn],
+    ["es", ptBr.overlayAiLanguageEs],
+  ] as const) {
+    const option = ownerDocument.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    languageSelect.append(option);
+  }
+  aiControls.append(selectedTextLabel, languageSelect);
+  panel.append(aiControls);
+
   const fieldsList = ownerDocument.createElement("ul");
   fieldsList.className = "fields";
   panel.append(fieldsList);
@@ -273,7 +326,11 @@ export function mountOverlay(
   );
   const undoButton = createButton(ownerDocument, ptBr.overlayUndo, "undo", undoLast);
   undoButton.disabled = true;
-  actions.append(applyReadyButton, undoButton);
+  const cancelAiButton = createButton(ownerDocument, ptBr.overlayCancel, "cancel-ai", () => {
+    activeAiGeneration?.abort();
+  });
+  cancelAiButton.hidden = true;
+  actions.append(applyReadyButton, undoButton, cancelAiButton);
   panel.append(actions);
   shadowRoot.append(panel);
   ownerDocument.body.append(host);
@@ -282,6 +339,8 @@ export function mountOverlay(
   let fields: OverlayField[] = [];
   let focusedField: OverlayField | undefined;
   let disposed = false;
+  let aiAvailable = false;
+  let activeAiGeneration: AbortController | undefined;
   let refreshSequence = 0;
   let refreshTimer: number | undefined;
   let lastLiveMessage = "";
@@ -339,6 +398,12 @@ export function mountOverlay(
         item.append(
           createButton(ownerDocument, ptBr.overlayApply, "apply", () => applySuggestion(field)),
         );
+      } else if (canGenerateForField(field) && aiAvailable && generateAi) {
+        item.append(
+          createButton(ownerDocument, ptBr.overlayGenerate, "generate", () => {
+            void generateForField(field);
+          }),
+        );
       }
 
       fieldsList.append(item);
@@ -380,6 +445,89 @@ export function mountOverlay(
     const undone = fillHistory.undoLast();
     undoButton.disabled = !undone;
     announce(undone ? ptBr.overlayUndone : ptBr.overlayNothingToUndo);
+  }
+
+  async function generateForField(
+    field: Extract<OverlayField, { status: "open" }>,
+  ): Promise<void> {
+    if (!generateAi || !aiAvailable || activeAiGeneration || disposed) {
+      announce(ptBr.overlayAiUnavailable);
+      return;
+    }
+
+    const selectedText = selectedTextCheckbox.checked
+      ? ownerDocument.getSelection()?.toString().trim()
+      : undefined;
+    if (selectedTextCheckbox.checked && !selectedText) {
+      announce(ptBr.overlayAiSelectionRequired);
+      return;
+    }
+
+    const controller = new AbortController();
+    activeAiGeneration = controller;
+    cancelAiButton.hidden = false;
+    announce(ptBr.overlayAiGenerating);
+
+    const element = field.candidate.element;
+    const maxLength =
+      element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+        ? element.maxLength
+        : -1;
+    const command = {
+      type: "AI_GENERATE" as const,
+      question: field.candidate.label,
+      language: languageSelect.value as "pt" | "en" | "es",
+      ...(maxLength >= 0 ? { maxLength } : {}),
+      ...(selectedText ? { selectedText } : {}),
+    };
+    let generated = "";
+    let initialFill: FillResult | undefined;
+    let reachedMaxLength = false;
+
+    try {
+      await generateAi(command, controller.signal, (chunk) => {
+        if (disposed || controller.signal.aborted || chunk.length === 0) {
+          return;
+        }
+
+        const nextValue = generated + chunk;
+        const cappedValue = maxLength >= 0 ? nextValue.slice(0, maxLength) : nextValue;
+        if (cappedValue.length === generated.length) {
+          reachedMaxLength = true;
+          controller.abort();
+          return;
+        }
+
+        const result = fillField(element, cappedValue, { force: true });
+        if (result?.applied) {
+          initialFill ??= result;
+          generated = cappedValue;
+        }
+        if (cappedValue.length < nextValue.length) {
+          reachedMaxLength = true;
+          controller.abort();
+        }
+      });
+
+      announce(generated ? ptBr.overlayAiGenerated : ptBr.overlayAiEmpty);
+    } catch (error) {
+      if (reachedMaxLength) {
+        announce(ptBr.overlayAiMaxLength);
+      } else if (error instanceof AiGenerationError && error.code === "daily-limit") {
+        announce(ptBr.overlayAiDailyLimit);
+      } else if (controller.signal.aborted) {
+        announce(ptBr.overlayAiCancelled);
+      } else {
+        announce(ptBr.overlayAiUnavailable);
+      }
+    } finally {
+      if (initialFill) {
+        fillHistory.record(initialFill);
+        undoButton.disabled = false;
+      }
+      activeAiGeneration = undefined;
+      cancelAiButton.hidden = true;
+    }
   }
 
   function findField(element: EventTarget | null): OverlayField | undefined {
@@ -435,8 +583,13 @@ export function mountOverlay(
     try {
       const candidates = scanFields(ownerDocument);
       const host = ownerDocument.location?.hostname ?? "";
-      const rawMappings = await sendMessage({ type: "GET_MAPPINGS", host });
+      const [rawMappings, rawAiStatus] = await Promise.all([
+        sendMessage({ type: "GET_MAPPINGS", host }),
+        sendMessage({ type: "AI_STATUS" }),
+      ]);
       const learnedMappings = parseLearnedMappings(rawMappings);
+      aiAvailable = parseAiAvailability(rawAiStatus) && generateAi !== undefined;
+      aiControls.hidden = !aiAvailable;
       const classified = candidates.map((candidate) => ({
         candidate,
         classification: getFieldClassification(candidate, host, learnedMappings),
@@ -498,6 +651,7 @@ export function mountOverlay(
     }
     disposed = true;
     refreshSequence += 1;
+    activeAiGeneration?.abort();
     observer?.disconnect();
     ownerDocument.removeEventListener("focusin", handleFocusIn, true);
     ownerDocument.removeEventListener("keydown", handleKeyDown);

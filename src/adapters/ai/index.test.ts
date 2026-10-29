@@ -210,7 +210,10 @@ describe("OpenRouterProvider", () => {
       fetchFn: (async () => ({ ok: false, status: 429, text: async () => "" }) as unknown) as typeof fetch,
     });
 
-    await expect(provider429.listModels()).rejects.toThrow("limite do plano gratuito");
+    await expect(provider429.listModels()).rejects.toMatchObject({
+      code: "daily-limit",
+      message: expect.stringContaining("limite do plano gratuito"),
+    });
 
     const provider500 = new OpenRouterProvider({
       apiKey: "test-key",
