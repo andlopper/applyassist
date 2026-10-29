@@ -101,6 +101,22 @@ class FakeWaitingAiProvider implements AiProvider {
 class FakeBackgroundChrome implements BackgroundChrome {
   private messageListener: MessageListener | undefined;
   private readonly connectListeners = new Set<(port: BackgroundAiPort) => void>();
+  private commandListener: ((command: string) => void) | undefined;
+  readonly commands = {
+    onCommand: {
+      addListener: (listener: (command: string) => void) => {
+        this.commandListener = listener;
+      },
+    },
+  };
+  readonly tabs = {
+    query: async (details: { active: boolean; currentWindow: boolean }) => {
+      this.tabQueries.push(details);
+      return this.activeTabs;
+    },
+  };
+  readonly tabQueries: Array<{ active: boolean; currentWindow: boolean }> = [];
+  activeTabs: Array<{ id?: number }> = [];
   readonly runtime = {
     id: "extension-id",
     onMessage: {
@@ -152,6 +168,10 @@ class FakeBackgroundChrome implements BackgroundChrome {
     this.clickListener?.(tab);
   }
 
+  runCommand(command: string): void {
+    this.commandListener?.(command);
+  }
+
   sendMessage(
     message: unknown,
     sender: RuntimeSender,
@@ -180,6 +200,18 @@ describe("R-01/R-17 background action", () => {
 
     expect(chrome.scripts).toEqual([{ target: { tabId: 7 }, files: ["content.js"] }]);
     expect(chrome.openedPanels).toEqual([]);
+  });
+
+  it("opens the side panel using the active tab when the paste shortcut runs", async () => {
+    const chrome = new FakeBackgroundChrome();
+    chrome.activeTabs = [{ id: 21 }];
+    registerBackground(chrome, new FakeStorage());
+
+    chrome.runCommand("open-paste-mode");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(chrome.openedPanels).toEqual([{ tabId: 21 }]);
+    expect(chrome.tabQueries).toEqual([{ active: true, currentWindow: true }]);
   });
 
   it("marks unverified sites with a warning badge and title", async () => {

@@ -50,6 +50,14 @@ export interface BackgroundChrome {
       addListener(listener: (port: BackgroundAiPort) => void): void;
     };
   };
+  commands?: {
+    onCommand: {
+      addListener(listener: (command: string) => void): void;
+    };
+  };
+  tabs?: {
+    query(details: { active: boolean; currentWindow: boolean }): Promise<Array<{ id?: number }>>;
+  };
   action: {
     onClicked: {
       addListener(listener: (tab: BrowserTab) => void): void;
@@ -627,6 +635,21 @@ function readSiteOverrides(stored: unknown): SiteOverrides {
   return overrides;
 }
 
+export async function openPasteMode(chromeApi: BackgroundChrome): Promise<void> {
+  const query = chromeApi.tabs?.query;
+  if (typeof query !== "function") {
+    return;
+  }
+
+  const tabs = await query({ active: true, currentWindow: true });
+  const activeTab = tabs.find((tab) => typeof tab.id === "number" && Number.isInteger(tab.id));
+  if (activeTab === undefined || typeof activeTab.id !== "number") {
+    return;
+  }
+
+  await chromeApi.sidePanel.open({ tabId: activeTab.id });
+}
+
 async function showActivationError(chrome: BackgroundChrome, tabId: number): Promise<void> {
   await Promise.all([
     chrome.action.setBadgeText({ text: "!", tabId }),
@@ -698,6 +721,14 @@ export function registerBackground(
   chromeApi.action.onClicked.addListener((tab) => {
     void handleActionClick(chromeApi, storage, tab).catch(() => {
       console.error("Unable to report ApplyAssist activation failure.");
+    });
+  });
+  chromeApi.commands?.onCommand.addListener((command) => {
+    if (command !== "open-paste-mode") {
+      return;
+    }
+    void openPasteMode(chromeApi).catch(() => {
+      console.error("Unable to open the side panel in paste mode.");
     });
   });
   registerMessageRouter(chromeApi.runtime, (message) => {

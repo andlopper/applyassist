@@ -96,7 +96,7 @@ Aceite: função pura; testes de prompt (papel, regras, few-shot, formato, delim
 Depende de: T-13, T-19, T-20 | Ler: FDD §10 (AI_GENERATE), §12 | Reqs: R-13, R-15
 Aceite: streaming direto no campo, desfazer, cancelar; texto da vaga só da seleção do usuário; sem dados sensíveis na requisição (teste inspecionando o payload); mensagem amigável para limite diário.
 
-### [ ] T-22 — Painel lateral: modo colar e conexão
+### [x] T-22 — Painel lateral: modo colar e conexão
 Depende de: T-19, T-20 | Ler: FDD §12 (Side panel), §11 | Reqs: R-16, R-17
 Aceite: gerar a partir de texto colado, copiar saída; aba Conexão IA (login/chave, modelo, aviso do que é enviado); sem acesso à página; comando `Alt+Shift+P` abre o painel.
 
