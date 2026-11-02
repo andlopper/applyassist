@@ -129,3 +129,28 @@ A implementação real da comunicação com a API OpenRouter fica para T-19 e de
 
 ## Marcação de escopo
 Esta spike foi concluída como documento de prova de conceito. Nenhuma funcionalidade de produção foi adicionada; apenas a documentação necessária para validar a direção do design e evitar implementação prematura.
+
+# SPIKE T-24 — `activeTab` + `allFrames` em iframes de outro domínio
+
+## Objetivo
+Determinar se `chrome.scripting.executeScript({ target: { tabId, allFrames: true } })` após o clique do usuário alcança iframes de outra origem, sem ampliar permissões permanentes.
+
+## Resultado da verificação documental
+A documentação oficial do Chrome define que:
+- `activeTab` concede temporariamente acesso à origem do frame principal da aba após um gesto do usuário;
+- `allFrames: true` tenta injetar em todos os frames, mas cada frame é verificado separadamente; frames filhos só recebem o script quando sua URL também atende aos requisitos de acesso.
+
+Portanto, `activeTab` não concede por si só acesso a um iframe de outra origem. Para alcançá-lo, seria necessária permissão de host correspondente à origem do iframe. O projeto não declara essa permissão, de acordo com o ADR-002.
+
+Referências oficiais:
+- [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab)
+- [chrome.scripting — InjectionTarget](https://developer.chrome.com/docs/extensions/reference/api/scripting#type-InjectionTarget)
+
+## Fixture e limite da evidência
+Não foi executada uma fixture cross-origin nem um teste interativo real do clique da extensão nesta spike. O resultado acima é uma conclusão documental da API, não uma observação experimental em fixture. A aceitação original da T-24 pede verificação em fixture; essa parte permanece pendente.
+
+## Decisão de produto
+Manter o escopo de permissões do ADR-002 e documentar que formulários hospedados em iframes de outra origem não são suportados com `activeTab` apenas. Não solicitar permissões de host adicionais nem prometer suporte universal.
+
+## Marcação de escopo
+Esta nota registra a limitação conhecida sem alterar permissões ou comportamento de produção. A tarefa T-24 só deve ser marcada concluída depois da validação cross-origin em fixture conforme o critério de aceitação.

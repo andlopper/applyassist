@@ -2,7 +2,7 @@
 
 Formato: `Q-nn` · pergunta · quem resolve · tarefa relacionada · status. A IA adiciona aqui o que não estiver especificado, em vez de inventar.
 
-- **Q-01** — `activeTab` + `allFrames` alcança iframes de outro domínio? (T-24) — aberto
+- **Q-01** — `activeTab` + `allFrames` alcança iframes de outro domínio? (T-24) — resposta documental: não com `activeTab` apenas; seria necessária permissão de host para a origem do iframe. Validação em fixture ainda pendente; ver `docs/SPIKES.md`.
 - **Q-02** — O login PKCE do OpenRouter funciona com `chrome.identity.launchWebAuthFlow` e a URL `https://<id>.chromiumapp.org/`? (T-18) — aberto
 - **Q-03** — Nome exato do campo de privacidade por requisição no OpenRouter (`provider.data_collection`)? Confirmar na documentação oficial. (T-19) — aberto
 - **Q-04** — `chrome.sidePanel.open()` funciona a partir do comando de teclado e do clique do ícone em site bloqueado? (T-09, T-22) — aberto
