@@ -109,7 +109,7 @@ Aceite: fixtures (simples, React controlado, campo-isca, várias etapas) carrega
 Depende de: T-09 | Ler: FDD §9
 Aceite: `docs/SPIKES.md` registra se `allFrames` com `activeTab` alcança iframe de outro domínio nas fixtures; decisão (suportar/documentar limitação) via ADR se mudar o escopo.
 
-### [ ] T-25 — Revisão de segurança e dependências
+### [x] T-25 — Revisão de segurança e dependências
 Depende de: T-23 | Ler: FDD §13
 Aceite: prompt `02-security-review` sem FAIL; `npm audit --omit=dev` limpo ou justificado; permissões revisadas; nenhum `web_accessible_resources`.
 
