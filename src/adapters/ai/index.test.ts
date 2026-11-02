@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OpenRouterProvider } from "./index";
+import { OllamaProvider, OpenRouterProvider } from "./index";
 
 describe("OpenRouterProvider", () => {
   it("lists models from the OpenRouter API", async () => {
@@ -266,5 +266,159 @@ describe("OpenRouterProvider", () => {
     }
 
     expect(parts).toEqual(["Hello world"]);
+  });
+});
+
+describe("OllamaProvider", () => {
+  it("lists models installed in Ollama", async () => {
+    let requestedUrl = "";
+    const provider = new OllamaProvider({
+      fetchFn: async (input: string | URL | Request) => {
+        requestedUrl = String(input);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            models: [{ name: "qwen2.5:3b" }, { name: "llama3.2:1b" }, { invalid: true }],
+          }),
+        } as Response;
+      },
+    });
+
+    await expect(provider.listModels()).resolves.toEqual([
+      { id: "qwen2.5:3b", label: "qwen2.5:3b" },
+      { id: "llama3.2:1b", label: "llama3.2:1b" },
+    ]);
+    expect(requestedUrl).toBe("http://localhost:11434/api/tags");
+  });
+
+  it("streams fragmented Ollama NDJSON with thinking disabled", async () => {
+    const chunks = [
+      '{"message":{"content":"Olá"},"done":false}\n{"message":{"content":" mundo"}',
+      ',"done":false}\n{"message":{"content":""},"done":true}\n',
+    ];
+    let requestBody: Record<string, unknown> | undefined;
+    const provider = new OllamaProvider({
+      fetchFn: async (_input: string | URL | Request, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        let index = 0;
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader() {
+              return {
+                async read() {
+                  if (index >= chunks.length) {
+                    return { value: undefined, done: true };
+                  }
+                  const chunk = chunks[index];
+                  index += 1;
+                  return { value: new TextEncoder().encode(chunk), done: false };
+                },
+              };
+            },
+          },
+        } as unknown as Response;
+      },
+    });
+    const parts: string[] = [];
+
+    for await (const part of provider.generate(
+      {
+        question: "Qual é sua experiência?",
+        language: "pt",
+        model: "qwen2.5:3b",
+        profileContext: "Trabalhei em produtos.",
+      },
+      new AbortController().signal,
+    )) {
+      parts.push(part);
+    }
+
+    expect(requestBody).toMatchObject({
+      model: "qwen2.5:3b",
+      stream: true,
+      think: false,
+    });
+    expect(parts).toEqual(["Olá", " mundo"]);
+  });
+
+  it("explains how to allow the extension when Ollama returns 403", async () => {
+    const provider = new OllamaProvider({
+      extensionOrigin: "chrome-extension://abcdefghijklmnop",
+      fetchFn: async () => ({ ok: false, status: 403 }) as Response,
+    });
+
+    await expect(provider.listModels()).rejects.toThrow(
+      "OLLAMA_ORIGINS=chrome-extension://abcdefghijklmnop",
+    );
+  });
+
+  it("explains how to check the allowed origin when the browser blocks the connection", async () => {
+    const provider = new OllamaProvider({
+      extensionOrigin: "chrome-extension://abcdefghijklmnop",
+      fetchFn: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+
+    await expect(provider.listModels()).rejects.toMatchObject({
+      message: expect.stringMatching(
+        /Não foi possível acessar.*OLLAMA_ORIGINS=chrome-extension:\/\/abcdefghijklmnop/,
+      ),
+    });
+  });
+
+  it.each([
+    { status: 500, message: "não respondeu corretamente" },
+    { status: 404, message: "não respondeu como esperado" },
+  ])("maps Ollama HTTP $status failures to clear guidance", async ({ status, message }) => {
+    const provider = new OllamaProvider({
+      fetchFn: async () => ({ ok: false, status }) as Response,
+    });
+
+    await expect(provider.listModels()).rejects.toThrow(message);
+  });
+
+  it("rejects malformed Ollama stream events", async () => {
+    const provider = new OllamaProvider({
+      fetchFn: async () => {
+        let readCount = 0;
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader() {
+              return {
+                async read() {
+                  readCount += 1;
+                  if (readCount > 1) {
+                    return { value: undefined, done: true };
+                  }
+                  return { value: new TextEncoder().encode("not-json\n"), done: false };
+                },
+              };
+            },
+          },
+        } as unknown as Response;
+      },
+    });
+
+    await expect(
+      (async () => {
+        for await (const chunk of provider.generate(
+          {
+            question: "Qual é sua experiência?",
+            language: "pt",
+            model: "qwen2.5:3b",
+            profileContext: "Trabalhei em produtos.",
+          },
+          new AbortController().signal,
+        )) {
+          void chunk;
+        }
+      })(),
+    ).rejects.toThrow("O Ollama retornou um evento de streaming inválido");
   });
 });

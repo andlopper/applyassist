@@ -29,4 +29,14 @@
 O plano Free tem limites mensais de completions e de uso de chat/agente (os números variam por fonte e mudaram em junho de 2026; confira no seu painel do Copilot). Por isso: uma tarefa por requisição, contexto curto, testes rodando localmente (não consomem créditos) e completions inline para ajustes pequenos.
 
 ## 6. Opcional, só na T-27: Ollama
-No seu PC (CPU, sem GPU dedicada) comece por modelos pequenos. O Ollama bloqueia extensões por padrão; veja FDD §11.5.
+No seu PC (CPU, sem GPU dedicada) comece por modelos pequenos. O Ollama bloqueia extensões por padrão; permita a origem exata do ApplyAssist:
+
+1. A ID estável de desenvolvimento é `njfbindmmjdonjoiddjnmjnckppoooeg`; a origem é `chrome-extension://njfbindmmjdonjoiddjnmjnckppoooeg`.
+2. No PowerShell, defina a variável de ambiente do usuário:
+   ```powershell
+   [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "chrome-extension://njfbindmmjdonjoiddjnmjnckppoooeg", "User")
+   ```
+3. Encerre o Ollama pela área de notificação e abra-o novamente para carregar a variável.
+4. Recarregue o ApplyAssist em `chrome://extensions`.
+
+O ID vem da chave pública de desenvolvimento no manifesto. Não remova nem altere essa chave, pois isso muda a origem. Para publicar a extensão na Chrome Web Store, use a chave pública atribuída à publicação. O Ollama precisa estar em execução com o modelo já baixado; por exemplo, `ollama pull qwen2.5:3b`. Consulte FDD §11.5.

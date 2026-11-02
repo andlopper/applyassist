@@ -117,6 +117,6 @@ Aceite: prompt `02-security-review` sem FAIL; `npm audit --omit=dev` limpo ou ju
 Depende de: T-25 | Ler: PRD, COMPLIANCE
 Aceite: README em pt-BR com demonstração (GIF com dados falsos), diagrama de arquitetura, instruções de instalação, seção de conformidade (sites, LinkedIn, limites), LICENSE, ícones 16/32/48/128, política de privacidade curta.
 
-### [ ] T-27 — (Opcional) Provedor Ollama
+### [x] T-27 — (Opcional) Provedor Ollama
 Depende de: T-19 | Ler: FDD §11.5 | Reqs: R-25
 Aceite: adaptador com streaming; ID de extensão estável documentado; instruções de `OLLAMA_ORIGINS`; erro claro quando bloqueado (403).

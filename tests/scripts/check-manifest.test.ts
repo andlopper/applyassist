@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createManifest } from "../../manifest.config.ts";
@@ -12,6 +13,20 @@ function validManifest(): Record<string, unknown> {
 describe("validateManifest", () => {
   it("accepts the approved manifest policy", () => {
     expect(validateManifest(validManifest())).toEqual([]);
+  });
+
+  it("keeps the documented development extension ID stable", () => {
+    const key = createManifest("0.1.0").key;
+    const extensionId = createHash("sha256")
+      .update(Buffer.from(key, "base64"))
+      .digest()
+      .subarray(0, 16)
+      .toString("hex")
+      .replace(/[0-9a-f]/g, (digit) =>
+        String.fromCharCode(digit.charCodeAt(0) + (digit <= "9" ? 49 : 10)),
+      );
+
+    expect(extensionId).toBe("njfbindmmjdonjoiddjnmjnckppoooeg");
   });
 
   it("rejects a non-object manifest", () => {

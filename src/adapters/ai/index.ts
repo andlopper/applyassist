@@ -35,9 +35,20 @@ export interface OpenRouterModel {
   label: string;
 }
 
+export interface OllamaModel {
+  id: string;
+  label: string;
+}
+
 interface OpenRouterProviderOptions {
   apiKey?: string;
   baseUrl?: string;
+  fetchFn?: typeof fetch;
+}
+
+interface OllamaProviderOptions {
+  baseUrl?: string;
+  extensionOrigin?: string;
   fetchFn?: typeof fetch;
 }
 
@@ -55,6 +66,7 @@ interface OpenRouterStreamResponse {
 }
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
 function normalizeModelLabel(modelId: string): string {
   const lastSegment = modelId.split("/").at(-1) ?? modelId;
@@ -115,6 +127,51 @@ function mapOpenRouterError(status: number): Error {
   }
 }
 
+function getOllamaOriginInstruction(extensionOrigin: string): string {
+  return `Configure OLLAMA_ORIGINS=${extensionOrigin} e reinicie o Ollama.`;
+}
+
+function mapOllamaError(status: number, extensionOrigin: string): Error {
+  if (status === 403) {
+    return new AiProviderError(
+      "unavailable",
+      `O Ollama bloqueou a extensão. ${getOllamaOriginInstruction(extensionOrigin)}`,
+    );
+  }
+  if (status >= 500) {
+    return new AiProviderError(
+      "unavailable",
+      "O Ollama não respondeu corretamente. Verifique o serviço e tente novamente.",
+    );
+  }
+  return new AiProviderError(
+    "unavailable",
+    "O Ollama não respondeu como esperado. Verifique o endereço e tente novamente.",
+  );
+}
+
+function parseOllamaEvent(line: string): string {
+  if (line.trim().length === 0) {
+    return "";
+  }
+
+  let event: unknown;
+  try {
+    event = JSON.parse(line) as unknown;
+  } catch {
+    throw new AiProviderError("unavailable", "O Ollama retornou um evento de streaming inválido.");
+  }
+
+  if (!isRecord(event)) {
+    throw new AiProviderError("unavailable", "O Ollama retornou um evento de streaming inválido.");
+  }
+  const message = event.message;
+  if (!isRecord(message) || typeof message.content !== "string") {
+    return "";
+  }
+  return message.content;
+}
+
 function parseSseEvent(rawEvent: string): string {
   const lines = rawEvent
     .split("\n")
@@ -152,6 +209,130 @@ function parseSseEvent(rawEvent: string): string {
   }
 
   return "";
+}
+
+export class OllamaProvider implements AiProvider {
+  readonly id = "ollama" as const;
+
+  private readonly baseUrl: string;
+  private readonly extensionOrigin: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: OllamaProviderOptions = {}) {
+    this.baseUrl = options.baseUrl ?? DEFAULT_OLLAMA_BASE_URL;
+    this.extensionOrigin = options.extensionOrigin ?? "chrome-extension://<ID da extensão>";
+    this.fetchImpl = options.fetchFn ?? globalThis.fetch;
+  }
+
+  async listModels(signal?: AbortSignal): Promise<OllamaModel[]> {
+    if (typeof this.fetchImpl !== "function") {
+      throw new Error("A API de rede do navegador não está disponível.");
+    }
+
+    const requestSignal = signal ?? new AbortController().signal;
+    const response = await this.fetchOllama(`${this.baseUrl}/api/tags`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: requestSignal,
+    });
+
+    if (!response.ok) {
+      throw mapOllamaError(response.status, this.extensionOrigin);
+    }
+
+    const payload = (await response.json()) as unknown;
+    if (!isRecord(payload) || !Array.isArray(payload.models)) {
+      throw new AiProviderError("unavailable", "O Ollama retornou uma lista de modelos inválida.");
+    }
+
+    return payload.models.flatMap((model) => {
+      if (!isRecord(model) || typeof model.name !== "string") {
+        return [];
+      }
+      return [{ id: model.name, label: model.name }];
+    });
+  }
+
+  async *generate(req: GenerateRequest, signal: AbortSignal): AsyncGenerator<string> {
+    if (signal.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    if (typeof this.fetchImpl !== "function") {
+      throw new Error("A API de rede do navegador não está disponível.");
+    }
+
+    const messageText = buildPrompt({
+      question: req.question,
+      maxLength: req.maxLength,
+      language: req.language,
+      profileContext: req.profileContext,
+      jobContext: req.jobContext,
+    });
+    const response = await this.fetchOllama(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
+      body: JSON.stringify({
+        model: req.model,
+        stream: true,
+        think: false,
+        messages: [{ role: "user", content: messageText }],
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw mapOllamaError(response.status, this.extensionOrigin);
+    }
+
+    const body = response.body;
+    if (!body || typeof body.getReader !== "function") {
+      throw new Error("O Ollama não retornou um stream válido para esta geração.");
+    }
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const chunk = parseOllamaEvent(line);
+        if (chunk.length > 0) {
+          yield chunk;
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+    const tail = parseOllamaEvent(buffer);
+    if (tail.length > 0) {
+      yield tail;
+    }
+  }
+
+  private async fetchOllama(input: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.fetchImpl(input, init);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new AiProviderError(
+          "unavailable",
+          `Não foi possível acessar o Ollama. Confirme se está em execução e se a origem da extensão está permitida. ${getOllamaOriginInstruction(this.extensionOrigin)}`,
+        );
+      }
+      throw error;
+    }
+  }
 }
 
 export class OpenRouterProvider implements AiProvider {
@@ -209,7 +390,9 @@ export class OpenRouterProvider implements AiProvider {
       .filter((entry): entry is OpenRouterModel => entry !== undefined);
 
     if (models.length === 0) {
-      throw new Error("Nenhum modelo disponível com privacidade 'deny'. Escolha outro modelo ou use outra chave.");
+      throw new Error(
+        "Nenhum modelo disponível com privacidade 'deny'. Escolha outro modelo ou use outra chave.",
+      );
     }
 
     return models;
@@ -221,7 +404,9 @@ export class OpenRouterProvider implements AiProvider {
     }
 
     if (!this.apiKey || this.apiKey.trim().length === 0) {
-      throw new Error("Chave do OpenRouter ausente. Conecte a conta ou adicione uma chave manualmente.");
+      throw new Error(
+        "Chave do OpenRouter ausente. Conecte a conta ou adicione uma chave manualmente.",
+      );
     }
 
     const messageText = buildPrompt({
@@ -289,6 +474,12 @@ export class OpenRouterProvider implements AiProvider {
   }
 }
 
-export function createOpenRouterProvider(options: OpenRouterProviderOptions = {}): OpenRouterProvider {
+export function createOpenRouterProvider(
+  options: OpenRouterProviderOptions = {},
+): OpenRouterProvider {
   return new OpenRouterProvider(options);
+}
+
+export function createOllamaProvider(options: OllamaProviderOptions = {}): OllamaProvider {
+  return new OllamaProvider(options);
 }

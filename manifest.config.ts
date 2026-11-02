@@ -3,6 +3,7 @@ export function createManifest(version: string) {
     manifest_version: 3,
     name: "ApplyAssist",
     version,
+    key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl9m8jD9M4PBwDb5RTcWciup4IF+ZermyQKl0h3VzstaHsHlDFP4Pu3rKyL5Dc3EhWW1EXpI+qbY070pzMS2UvwqxxobLdxMcbgYIJLsAbsDGFm9CBBYTveB0/nXaVcBw70Ez1b9G/XEeq+yJSalvs2aWWWDs3cELAurQ4ew4MLvc5oyQKNpwyZwxdhG88qfBPAS1QmS3nZl38l2dcnrwsaWJg4xGSVlaAPsLY2G8DKYwOiQ7NITU2L0z6qFO3A2XdaaGd+EdqvvjNgsUPsNVdi/0GKLgtg7J8IcU10HoffSOpJKLpY4HBQ8Yk5iO3DmSd+Q9e4ItUMYNUN2TZ10luwIDAQAB",
     description: "Ajuda a preencher formulários de candidatura. Você revisa e envia.",
     icons: {
       "16": "icons/icon-16.png",
