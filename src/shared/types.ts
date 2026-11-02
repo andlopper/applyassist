@@ -6,6 +6,7 @@ export interface Settings {
   sensitiveEnabled: Record<SensitiveCategory, boolean>;
   provider: Provider;
   openrouter: { model?: string };
+  ollama: { model?: string };
   siteOverrides: Record<string, SiteOverride>;
   debug: boolean;
 }
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitiveEnabled: { ...DEFAULT_SENSITIVE_ENABLED },
   provider: "none",
   openrouter: {},
+  ollama: {},
   siteOverrides: {},
   debug: false,
 };
@@ -36,6 +38,7 @@ export function normalizeSettings(input: unknown): Settings {
       sensitiveEnabled: { ...fallback.sensitiveEnabled },
       provider: fallback.provider,
       openrouter: { ...fallback.openrouter },
+      ollama: { ...fallback.ollama },
       siteOverrides: { ...fallback.siteOverrides },
       debug: fallback.debug,
     };
@@ -53,6 +56,9 @@ export function normalizeSettings(input: unknown): Settings {
   const openrouter = isRecord(input.openrouter)
     ? { model: typeof input.openrouter.model === "string" ? input.openrouter.model : undefined }
     : {};
+  const ollama = isRecord(input.ollama)
+    ? { model: typeof input.ollama.model === "string" ? input.ollama.model : undefined }
+    : {};
 
   const siteOverrides: Record<string, SiteOverride> = {};
   if (isRecord(input.siteOverrides)) {
@@ -67,6 +73,7 @@ export function normalizeSettings(input: unknown): Settings {
     sensitiveEnabled,
     provider,
     openrouter,
+    ollama,
     siteOverrides,
     debug: typeof input.debug === "boolean" ? input.debug : false,
   };

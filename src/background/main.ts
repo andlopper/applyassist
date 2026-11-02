@@ -33,6 +33,7 @@ import {
 import { normalizeSettings } from "../shared/types";
 import {
   AiProviderError,
+  OllamaProvider,
   OpenRouterProvider,
   type AiProvider,
   type GenerateRequest,
@@ -46,6 +47,7 @@ interface BrowserTab {
 
 export interface BackgroundChrome {
   runtime: RuntimePort & {
+    getURL(path: string): string;
     onConnect: {
       addListener(listener: (port: BackgroundAiPort) => void): void;
     };
@@ -122,7 +124,17 @@ const SENSITIVE_CONTEXT_LABELS = [
   "telephone",
 ] as const;
 
-export type AiProviderFactory = (apiKey: string) => AiProvider;
+export type AiProviderConfiguration =
+  | { provider: "openrouter"; apiKey: string; model: string }
+  | { provider: "ollama"; model: string; extensionOrigin: string };
+export type AiProviderFactory = (configuration: AiProviderConfiguration) => AiProvider;
+
+function getSafeAiFailureReason(error: unknown): string {
+  if (error instanceof AiProviderError) {
+    return error.reason ?? error.code;
+  }
+  return "internal";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -261,12 +273,13 @@ async function readProfileValues(
 }
 
 interface AiGenerationConfiguration {
-  apiKey: string;
+  provider: AiProviderConfiguration;
   model: string;
 }
 
 async function getAiGenerationConfiguration(
   storage: StorageAdapter,
+  extensionOrigin: string,
 ): Promise<AiGenerationConfiguration | undefined> {
   const storedSettings = await storage.getItem(SETTINGS_STORAGE_KEY);
   if (storedSettings === undefined) {
@@ -281,6 +294,13 @@ async function getAiGenerationConfiguration(
   }
 
   const settings = normalizeSettings(storedSettings.value);
+  if (settings.provider === "ollama") {
+    const model = settings.ollama.model?.trim();
+    return model ? {
+      provider: { provider: "ollama", model, extensionOrigin },
+      model,
+    } : undefined;
+  }
   if (settings.provider !== "openrouter" || !settings.openrouter.model) {
     return undefined;
   }
@@ -294,7 +314,16 @@ async function getAiGenerationConfiguration(
   }
 
   const apiKey = storedSecrets.apiKey.trim();
-  return apiKey.length > 0 ? { apiKey, model: settings.openrouter.model } : undefined;
+  return apiKey.length > 0
+    ? {
+        provider: {
+          provider: "openrouter",
+          apiKey,
+          model: settings.openrouter.model,
+        },
+        model: settings.openrouter.model,
+      }
+    : undefined;
 }
 
 function getSafeSelectedText(selectedText: string | undefined): string | undefined {
@@ -362,6 +391,7 @@ function registerAiGeneration(
   chromeApi: BackgroundChrome,
   storage: StorageAdapter,
   providerFactory: AiProviderFactory,
+  extensionOrigin: string,
 ): void {
   chromeApi.runtime.onConnect.addListener((port) => {
     if (port.name !== "AI_GENERATE") {
@@ -386,19 +416,24 @@ function registerAiGeneration(
       command: Extract<AiGenerationPortCommand, { type: "AI_GENERATE" }>,
       controller: AbortController,
     ): Promise<void> => {
+      let providerId: AiProviderConfiguration["provider"] | "unknown" = "unknown";
+      let failureStage: "configuration" | "profile" | "provider" = "configuration";
       try {
-        const configuration = await getAiGenerationConfiguration(storage);
+        const configuration = await getAiGenerationConfiguration(storage, extensionOrigin);
         if (!configuration || controller.signal.aborted) {
           post({ type: "AI_ERROR", code: "unavailable" });
           return;
         }
+        providerId = configuration.provider.provider;
 
+        failureStage = "profile";
         const profileValues = await readProfileValues(storage);
         if (controller.signal.aborted) {
           return;
         }
+        failureStage = "provider";
         const request = createAiGenerationRequest(command, configuration, profileValues);
-        const provider = providerFactory(configuration.apiKey);
+        const provider = providerFactory(configuration.provider);
         for await (const chunk of provider.generate(request, controller.signal)) {
           if (controller.signal.aborted) {
             return;
@@ -412,6 +447,11 @@ function registerAiGeneration(
         if (controller.signal.aborted) {
           return;
         }
+        console.warn("ApplyAssist AI generation failed.", {
+          provider: providerId,
+          stage: failureStage,
+          reason: getSafeAiFailureReason(error),
+        });
         post({
           type: "AI_ERROR",
           code: error instanceof AiProviderError && error.code === "daily-limit"
@@ -716,8 +756,16 @@ declare const chrome: BackgroundChrome;
 export function registerBackground(
   chromeApi: BackgroundChrome = chrome,
   storage: StorageAdapter = createChromeStorageAdapter(),
-  providerFactory: AiProviderFactory = (apiKey) => new OpenRouterProvider({ apiKey }),
+  providerFactory: AiProviderFactory = (configuration) =>
+    configuration.provider === "ollama"
+      ? new OllamaProvider({ extensionOrigin: configuration.extensionOrigin })
+      : new OpenRouterProvider({ apiKey: configuration.apiKey }),
 ): void {
+  const extensionUrl = new URL(chromeApi.runtime.getURL(""));
+  if (extensionUrl.protocol !== "chrome-extension:" || extensionUrl.host !== chromeApi.runtime.id) {
+    throw new Error("Chrome returned an invalid extension origin.");
+  }
+  const extensionOrigin = `${extensionUrl.protocol}//${extensionUrl.host}`;
   chromeApi.action.onClicked.addListener((tab) => {
     void handleActionClick(chromeApi, storage, tab).catch(() => {
       console.error("Unable to report ApplyAssist activation failure.");
@@ -745,12 +793,12 @@ export function registerBackground(
       return handleRecordApplication(storage, message);
     }
     if (message.type === "AI_STATUS") {
-      return getAiGenerationConfiguration(storage).then((configuration) => ({
+      return getAiGenerationConfiguration(storage, extensionOrigin).then((configuration) => ({
         available: configuration !== undefined,
       }));
     }
   });
-  registerAiGeneration(chromeApi, storage, providerFactory);
+  registerAiGeneration(chromeApi, storage, providerFactory, extensionOrigin);
 }
 
 if (typeof chrome !== "undefined") {

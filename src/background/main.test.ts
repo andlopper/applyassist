@@ -119,6 +119,7 @@ class FakeBackgroundChrome implements BackgroundChrome {
   activeTabs: Array<{ id?: number }> = [];
   readonly runtime = {
     id: "extension-id",
+    getURL: (path: string) => `chrome-extension://extension-id/${path}`,
     onMessage: {
       addListener: (listener: MessageListener) => {
         this.messageListener = listener;
@@ -719,6 +720,40 @@ describe("R-01/R-17 background action", () => {
     port.disconnect();
   });
 
+  it("composes the configured Ollama provider without a key and passes the real extension origin (T-28)", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const provider = new FakeAiProvider();
+    let composedConfiguration: unknown;
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: {
+        provider: "ollama",
+        ollama: { model: "qwen2.5:3b" },
+      },
+    });
+    registerBackground(chrome, storage, (configuration) => {
+      composedConfiguration = configuration;
+      return provider;
+    });
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 32 } };
+    chrome.connect(port);
+
+    port.send({ type: "AI_GENERATE", question: "Por que esta vaga?", language: "pt" });
+
+    await vi.waitFor(() => {
+      expect(port.events.at(-1)).toEqual({ type: "AI_DONE" });
+    });
+    expect(composedConfiguration).toEqual({
+      provider: "ollama",
+      model: "qwen2.5:3b",
+      extensionOrigin: "chrome-extension://extension-id",
+    });
+    expect(provider.requests[0]?.model).toBe("qwen2.5:3b");
+    port.disconnect();
+  });
+
   it("reports a friendly daily-limit code without exposing provider details", async () => {
     const chrome = new FakeBackgroundChrome();
     const storage = new FakeStorage();
@@ -746,6 +781,40 @@ describe("R-01/R-17 background action", () => {
     });
     expect(JSON.stringify(port.events)).not.toContain("private provider detail");
     port.disconnect();
+  });
+
+  it("logs only the safe failure category and stage, never the question or provider details", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    const provider = new FakeAiProvider(
+      new AiProviderError("unavailable", "private prompt content", "network"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "ollama", ollama: { model: "qwen2.5:3b" } },
+    });
+    registerBackground(chrome, storage, () => provider);
+    const port = new FakeBackgroundAiPort();
+    port.sender = { id: chrome.runtime.id, tab: { id: 33 } };
+    chrome.connect(port);
+
+    port.send({
+      type: "AI_GENERATE",
+      question: "private question content",
+      language: "en",
+    });
+
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalledWith("ApplyAssist AI generation failed.", {
+        provider: "ollama",
+        stage: "provider",
+        reason: "network",
+      });
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("private");
+    port.disconnect();
+    warn.mockRestore();
   });
 
   it("rejects AI ports opened by another extension", () => {
@@ -844,6 +913,27 @@ describe("R-01/R-17 background action", () => {
     chrome.sendMessage(
       { type: "AI_STATUS" },
       { id: chrome.runtime.id, tab: { id: 39 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ available: false });
+    });
+  });
+
+  it("reports Ollama as unavailable when no model is configured", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("settings:v1", {
+      schemaVersion: 1,
+      value: { provider: "ollama", ollama: {} },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      { type: "AI_STATUS" },
+      { id: chrome.runtime.id, tab: { id: 41 } },
       sendResponse,
     );
 

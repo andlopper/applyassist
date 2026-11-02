@@ -40,14 +40,26 @@ class FakeOptionsStorage {
   };
 }
 
+type OptionsPermissions = {
+  request: (permissions: { origins: string[] }) => Promise<boolean>;
+};
+
 let storage: FakeOptionsStorage;
+let requestPermission: (permissions: { origins: string[] }) => Promise<boolean>;
 
 function setChromeStorage(fakeStorage: FakeOptionsStorage): void {
+  requestPermission = vi.fn(async () => true);
   (
     globalThis as typeof globalThis & {
-      chrome?: { storage?: { local?: OptionsLocalStorage } };
+      chrome?: {
+        storage?: { local?: OptionsLocalStorage };
+        permissions?: OptionsPermissions;
+      };
     }
-  ).chrome = { storage: { local: fakeStorage.local } };
+  ).chrome = {
+    storage: { local: fakeStorage.local },
+    permissions: { request: requestPermission },
+  };
 }
 
 function buttonByName(name: string): HTMLButtonElement {
@@ -101,6 +113,92 @@ describe("R-08/R-10 options onboarding and learning review", () => {
 
     expect(document.body.textContent).toContain("Perfil salvo.");
     expect(document.body.textContent).toContain("Ana Silva");
+  });
+
+  it("requests Ollama host access only after the explicit permission button is clicked", async () => {
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    const provider = document.querySelector(
+      "select[aria-label='Provedor de IA']",
+    ) as HTMLSelectElement;
+    provider.value = "ollama";
+    provider.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushUi();
+    const model = document.querySelector(
+      "input[aria-label='Modelo do Ollama']",
+    ) as HTMLInputElement;
+    model.value = "qwen2.5:3b";
+    model.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushUi();
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    buttonByName("Permitir acesso ao Ollama").click();
+    await flushUi();
+
+    expect(requestPermission).toHaveBeenCalledWith({
+      origins: ["http://localhost:11434/*"],
+    });
+    expect(storage.values.get("settings:v1")).toMatchObject({
+      value: {
+        provider: "ollama",
+        ollama: { model: "qwen2.5:3b" },
+      },
+    });
+    expect(document.body.textContent).toContain("Acesso ao Ollama autorizado.");
+  });
+
+  it("does not save Ollama configuration when the user denies its optional host permission", async () => {
+    requestPermission = vi.fn(async () => false);
+    (
+      globalThis as typeof globalThis & {
+        chrome?: { permissions?: OptionsPermissions };
+      }
+    ).chrome!.permissions = { request: requestPermission };
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+    const provider = document.querySelector(
+      "select[aria-label='Provedor de IA']",
+    ) as HTMLSelectElement;
+    provider.value = "ollama";
+    provider.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushUi();
+
+    buttonByName("Permitir acesso ao Ollama").click();
+    await flushUi();
+
+    expect(document.body.textContent).toContain(
+      "A permissão para acessar o Ollama não foi concedida.",
+    );
+    expect(storage.values.has("settings:v1")).toBe(false);
+  });
+
+  it("reports a rejected optional host permission request", async () => {
+    await storage.local.set({
+      "settings:v1": {
+        schemaVersion: 1,
+        value: { provider: "ollama", ollama: { model: "qwen2.5:3b" } },
+      },
+    });
+    requestPermission = vi.fn(async () => {
+      throw new Error("permission request failed");
+    });
+    (
+      globalThis as typeof globalThis & {
+        chrome?: { permissions?: OptionsPermissions };
+      }
+    ).chrome!.permissions = { request: requestPermission };
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    buttonByName("Permitir acesso ao Ollama").click();
+    await flushUi();
+
+    expect(document.body.textContent).toContain("Não foi possível solicitar acesso ao Ollama.");
+    expect(storage.values.has("settings:v1")).toBe(true);
   });
 
   it("does not fall back to browser localStorage when extension storage is unavailable", async () => {

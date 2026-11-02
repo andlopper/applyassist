@@ -41,7 +41,6 @@ const CONTENT_MESSAGE_TYPES = new Set([
   "LEARN_EVENT",
   "GET_MAPPINGS",
   "RECORD_APPLICATION",
-  "AI_STATUS",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

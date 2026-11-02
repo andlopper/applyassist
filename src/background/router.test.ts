@@ -108,6 +108,23 @@ describe("R-01/R-17 background runtime message router", () => {
     expect(dispatch).toHaveBeenCalledWith(message, { id: runtime.id, tab: { id: 2 } });
   });
 
+  it("accepts AI availability requests from the extension side panel", async () => {
+    const runtime = new FakeChromeRuntime();
+    const dispatch = vi.fn(async () => ({ available: true }));
+    registerMessageRouter(runtime, dispatch);
+    const message = { type: "AI_STATUS" };
+    const sender = { id: runtime.id, url: `chrome-extension://${runtime.id}/sidepanel.html` };
+    const sendResponse = vi.fn();
+
+    const keepChannelOpen = runtime.send(message, sender, sendResponse);
+
+    expect(keepChannelOpen).toBe(true);
+    expect(dispatch).toHaveBeenCalledWith(message, sender);
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ available: true });
+    });
+  });
+
   it("ignores known message types with an invalid payload schema", () => {
     const runtime = new FakeChromeRuntime();
     const dispatch = vi.fn();

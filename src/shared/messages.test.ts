@@ -60,7 +60,7 @@ describe("runtime message schemas", () => {
     expect(isRuntimeMessage(message)).toBe(false);
   });
 
-  it("distinguishes content messages from extension-page requests", () => {
+  it("requires a tab only for messages sent by content scripts", () => {
     const contentMessage: RuntimeMessage = {
       type: "GET_MAPPINGS",
       host: "example.org",
@@ -68,7 +68,7 @@ describe("runtime message schemas", () => {
     const aiStatusMessage: RuntimeMessage = { type: "AI_STATUS" };
 
     expect(requiresContentTab(contentMessage)).toBe(true);
-    expect(requiresContentTab(aiStatusMessage)).toBe(true);
+    expect(requiresContentTab(aiStatusMessage)).toBe(false);
   });
 
   it("accepts only safe, user-triggered AI port commands", () => {

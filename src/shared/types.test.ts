@@ -23,6 +23,7 @@ describe("settings defaults and validation", () => {
       },
       provider: "ollama",
       openrouter: {},
+      ollama: {},
       siteOverrides: {},
       debug: false,
     });
@@ -46,8 +47,21 @@ describe("settings defaults and validation", () => {
       },
       provider: "openrouter",
       openrouter: { model: "gpt-4o-mini" },
+      ollama: {},
       siteOverrides: { "example.com": "allow" },
       debug: true,
+    });
+  });
+
+  it("preserves the Ollama provider and its model configuration (T-28)", () => {
+    expect(
+      normalizeSettings({
+        provider: "ollama",
+        ollama: { model: "qwen2.5:3b" },
+      }),
+    ).toMatchObject({
+      provider: "ollama",
+      ollama: { model: "qwen2.5:3b" },
     });
   });
 });

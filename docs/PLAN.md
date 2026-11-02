@@ -120,3 +120,7 @@ Aceite: README em pt-BR com demonstração (GIF com dados falsos), diagrama de a
 ### [x] T-27 — (Opcional) Provedor Ollama
 Depende de: T-19 | Ler: FDD §11.5 | Reqs: R-25
 Aceite: adaptador com streaming; ID de extensão estável documentado; instruções de `OLLAMA_ORIGINS`; erro claro quando bloqueado (403).
+
+### [x] T-28 — Integrar o provedor Ollama ao fluxo de geração
+Depende de: T-27 | Ler: FDD §10, §11.5
+Aceite: configuração aceita provider `ollama`; permissão opcional de `http://localhost:11434/*` solicitada somente por ação explícita da pessoa; background escolhe o provedor configurado sem exigir chave para Ollama; origem real da extensão passada ao adaptador; teste de integração no ponto de composição; FDD e PLAN atualizados.

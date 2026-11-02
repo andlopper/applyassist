@@ -59,7 +59,7 @@ tests/         fixtures/ (HTML com dados falsos)  e2e/
 }
 ```
 Proibido no manifesto (verificado por `check:manifest`): `content_scripts`, `host_permissions`, `<all_urls>`, `web_accessible_resources`, `externally_connectable`, `unsafe-eval`, `unsafe-inline`, permissões fora da lista acima.
-Justificativas: `activeTab`+`scripting` = injeção ao clique; `storage` = dados locais; `sidePanel` = modo colar; `identity` = login PKCE (`launchWebAuthFlow`). Hosts opcionais são pedidos com `chrome.permissions.request` a partir de gesto do usuário.
+Justificativas: `activeTab`+`scripting` = injeção ao clique; `storage` = dados locais; `sidePanel` = modo colar; `identity` = login PKCE (`launchWebAuthFlow`). Hosts opcionais são pedidos com `chrome.permissions.request` somente após ação explícita da pessoa na tela de opções.
 
 ## §3 Modelo de dados e armazenamento
 Chaves em `chrome.storage.local` (cada uma com `schemaVersion`; migrações em `adapters/storage/migrations.ts`):
@@ -84,6 +84,7 @@ interface Settings {
   sensitiveEnabled: Record<'documents' | 'birth' | 'address' | 'diversity', boolean>; // padrão: false
   provider: 'none' | 'openrouter' | 'ollama';
   openrouter: { model?: string };
+  ollama: { model?: string };
   siteOverrides: Record<string, 'allow' | 'block'>;
   debug: boolean;
 }
@@ -160,11 +161,11 @@ O comando `open-paste-mode` abre o painel lateral (gesto válido). iframes de ou
 | `LEARN_EVENT` | content → bg | `{ labelNorm, value, kind, host }` | `ok` |
 | `GET_MAPPINGS` | content → bg | `{ host }` | mapeamentos aplicáveis |
 | `RECORD_APPLICATION` | content → bg | `{ url, title?, company?, status }` | `{duplicate: boolean}` |
-| `AI_STATUS` | content → bg | `{}` | `{ available: boolean }` |
+| `AI_STATUS` | content/sidepanel → bg | `{}` | `{ available: boolean }` |
 | `AI_GENERATE` | content/sidepanel → bg (porta `AI_GENERATE`) | `{ question, language, maxLength?, selectedText? }` | `AI_CHUNK` em fluxo + `AI_DONE`/erro |
 | `AI_ABORT` | content/sidepanel → bg (mesma porta) | `{}` | cancela o `AbortSignal` da geração ativa |
 | `DEACTIVATE` | bg → content | — | — |
-Regras: `sender.id === chrome.runtime.id`; mensagens de content exigem `sender.tab`; tipo desconhecido é ignorado (loga só o tipo). O content nunca recebe o perfil inteiro, nem chaves. A porta de geração recebe somente a pergunta e, se a pessoa marcar a opção correspondente, o texto selecionado manualmente; o background lê as configurações, monta o contexto do perfil após a redação e guarda a chave fora do content.
+Regras: `sender.id === chrome.runtime.id`; mensagens originadas no content exigem `sender.tab`; `AI_STATUS` também pode vir de páginas da extensão e não exige tab; tipo desconhecido é ignorado (loga só o tipo). O content nunca recebe o perfil inteiro, nem chaves. A porta de geração recebe somente a pergunta e, se a pessoa marcar a opção correspondente, o texto selecionado manualmente; o background lê as configurações, monta o contexto do perfil após a redação e guarda a chave fora do content. Falhas de geração registram localmente apenas provedor, etapa e categoria segura do erro, nunca prompt, perfil, resposta ou chave. Erros durante leitura do stream Ollama são distinguidos da falha de rede ao iniciar a requisição.
 
 ## §11 IA
 ### §11.1 Porta
@@ -202,8 +203,8 @@ EXAMPLES: (2 few-shot: one pt, one en — pergunta + contexto fictício + respos
 ```
 Usuário: `<profile_context>…</profile_context><job_context>…</job_context><limits>maxLength=…</limits><question>…</question>`.
 Testes de prompt (T-20): tem papel, regras, few-shot, formato de saída, delimitadores de dado não confiável, sem `TODO`, respeita `maxLength`, idioma da pergunta.
-### §11.5 Ollama (opcional, T-27)
-`POST http://localhost:11434/api/chat` em streaming com o modo "pensar" desligado quando o modelo suportar. O Ollama bloqueia origens de extensão por padrão: exige `OLLAMA_ORIGINS` com a origem **exata** da extensão (`chrome-extension://<id>`), portanto o ID precisa ser estável (campo `key` público no manifesto de desenvolvimento). Documentar em `docs/SETUP-WINDOWS.md`.
+### §11.5 Ollama (opcional, T-27/T-28)
+`POST http://localhost:11434/api/chat` em streaming com o modo "pensar" desligado quando o modelo suportar. A configuração guarda `provider: 'ollama'` e `ollama.model`; Ollama não exige chave. A tela de opções solicita `http://localhost:11434/*` com `chrome.permissions.request` somente quando a pessoa aciona o botão de permissão. O background escolhe o adaptador pela configuração e passa a origem efetiva obtida por `chrome.runtime.getURL('')`. O Ollama bloqueia origens de extensão por padrão: exige `OLLAMA_ORIGINS` com a origem **exata** da extensão (`chrome-extension://<id>`), portanto o ID precisa ser estável (campo `key` público no manifesto de desenvolvimento). Documentar em `docs/SETUP-WINDOWS.md`.
 
 ## §12 Interface
 - **Overlay (content, Shadow DOM):** canto superior direito; contadores (Prontos · Incertos · Abertas · Bloqueados); lista de campos com rótulo, sugestão truncada, chip de status e botão "Aplicar"; botões "Preencher prontos", "Desfazer", "Fechar". Ao focar um campo com sugestão, aparece um chip "Usar: … (Alt+A)". Perguntas abertas: botão "Gerar" (se IA conectada), resposta transmitida diretamente ao campo, opções de desfazer/cancelar e opção explícita "Usar texto selecionado como descrição da vaga".

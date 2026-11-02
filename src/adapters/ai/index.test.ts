@@ -22,6 +22,28 @@ describe("OpenRouterProvider", () => {
     ]);
   });
 
+  it("calls the native fetch implementation with the global receiver", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = function (
+      this: unknown,
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> {
+      expect(this).toBe(globalThis);
+      expect(String(input)).toBe("https://openrouter.ai/api/v1/models");
+      expect(init?.method).toBe("GET");
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: [{ id: "openai/gpt-4o-mini" }] }), { status: 200 }),
+      );
+    };
+
+    try {
+      await new OpenRouterProvider({ apiKey: "test-key" }).listModels();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("streams provider: data_collection deny and merges fragmented SSE chunks", async () => {
     const chunks = [
       'data: {"choices":[{"delta":{"content":"Hel"}},{"delta":{"content":"lo"}}]}\n\n',
@@ -292,6 +314,28 @@ describe("OllamaProvider", () => {
     expect(requestedUrl).toBe("http://localhost:11434/api/tags");
   });
 
+  it("calls the native fetch implementation with the global receiver", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = function (
+      this: unknown,
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> {
+      expect(this).toBe(globalThis);
+      expect(String(input)).toBe("http://localhost:11434/api/tags");
+      expect(init?.method).toBe("GET");
+      return Promise.resolve(
+        new Response(JSON.stringify({ models: [{ name: "qwen2.5:3b" }] }), { status: 200 }),
+      );
+    };
+
+    try {
+      await new OllamaProvider().listModels();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("streams fragmented Ollama NDJSON with thinking disabled", async () => {
     const chunks = [
       '{"message":{"content":"Olá"},"done":false}\n{"message":{"content":" mundo"}',
@@ -353,6 +397,7 @@ describe("OllamaProvider", () => {
     await expect(provider.listModels()).rejects.toThrow(
       "OLLAMA_ORIGINS=chrome-extension://abcdefghijklmnop",
     );
+    await expect(provider.listModels()).rejects.toMatchObject({ reason: "forbidden" });
   });
 
   it("explains how to check the allowed origin when the browser blocks the connection", async () => {
@@ -364,6 +409,7 @@ describe("OllamaProvider", () => {
     });
 
     await expect(provider.listModels()).rejects.toMatchObject({
+      reason: "network",
       message: expect.stringMatching(
         /Não foi possível acessar.*OLLAMA_ORIGINS=chrome-extension:\/\/abcdefghijklmnop/,
       ),
@@ -379,6 +425,9 @@ describe("OllamaProvider", () => {
     });
 
     await expect(provider.listModels()).rejects.toThrow(message);
+    await expect(provider.listModels()).rejects.toMatchObject({
+      reason: status === 500 ? "server-response" : "http-response",
+    });
   });
 
   it("rejects malformed Ollama stream events", async () => {
@@ -420,5 +469,39 @@ describe("OllamaProvider", () => {
         }
       })(),
     ).rejects.toThrow("O Ollama retornou um evento de streaming inválido");
+  });
+
+  it("identifies an interrupted Ollama response stream without leaking request content", async () => {
+    const provider = new OllamaProvider({
+      fetchFn: async () => ({
+        ok: true,
+        status: 200,
+        body: {
+          getReader() {
+            return {
+              async read() {
+                throw new TypeError("stream disconnected");
+              },
+            };
+          },
+        },
+      }) as unknown as Response,
+    });
+
+    await expect(
+      (async () => {
+        for await (const chunk of provider.generate(
+          {
+            question: "Private test question",
+            language: "pt",
+            model: "qwen2.5:3b",
+            profileContext: "",
+          },
+          new AbortController().signal,
+        )) {
+          void chunk;
+        }
+      })(),
+    ).rejects.toMatchObject({ reason: "stream-read" });
   });
 });

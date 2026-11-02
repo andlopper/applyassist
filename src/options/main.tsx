@@ -31,11 +31,16 @@ type OptionsLocalStorage = {
   clear: () => Promise<void>;
 };
 
+type OptionsPermissions = {
+  request: (permissions: { origins: string[] }) => Promise<boolean>;
+};
+
 declare const chrome:
   | {
       storage?: {
         local?: OptionsLocalStorage;
       };
+      permissions?: OptionsPermissions;
     }
   | undefined;
 
@@ -223,6 +228,9 @@ function parseSettings(value: unknown): Settings | undefined {
     (value.provider !== "none" && value.provider !== "openrouter" && value.provider !== "ollama") ||
     !isRecord(value.openrouter) ||
     (value.openrouter.model !== undefined && typeof value.openrouter.model !== "string") ||
+    (value.ollama !== undefined &&
+      (!isRecord(value.ollama) ||
+        (value.ollama.model !== undefined && typeof value.ollama.model !== "string"))) ||
     !isRecord(value.siteOverrides) ||
     typeof value.debug !== "boolean"
   ) {
@@ -399,6 +407,40 @@ export function OptionsApp() {
         [SETTINGS_STORAGE_KEY]: { schemaVersion: 1, value: savedSettings },
       });
       setStatusMessage(ptBr.optionsProfileSaved);
+    } catch {
+      setStatusMessage(ptBr.optionsStorageError);
+    }
+  }
+
+  async function handleOllamaPermission(): Promise<void> {
+    if (!storageReady) {
+      setStatusMessage(ptBr.optionsStorageError);
+      return;
+    }
+    if (typeof chrome === "undefined" || chrome.permissions?.request === undefined) {
+      setStatusMessage(ptBr.optionsOllamaPermissionError);
+      return;
+    }
+    let granted: boolean;
+    try {
+      granted = await chrome.permissions.request({
+        origins: ["http://localhost:11434/*"],
+      });
+    } catch {
+      setStatusMessage(ptBr.optionsOllamaPermissionError);
+      return;
+    }
+    if (!granted) {
+      setStatusMessage(ptBr.optionsOllamaPermissionDenied);
+      return;
+    }
+    const nextSettings = normalizeSettings({ ...settings, provider: "ollama" });
+    try {
+      await writeStorageItems({
+        [SETTINGS_STORAGE_KEY]: { schemaVersion: 1, value: nextSettings },
+      });
+      setSettings(nextSettings);
+      setStatusMessage(ptBr.optionsOllamaPermissionGranted);
     } catch {
       setStatusMessage(ptBr.optionsStorageError);
     }
@@ -800,8 +842,54 @@ export function OptionsApp() {
           </section>
 
           <section>
-            <h2>{ptBr.optionsAiDisabled}</h2>
+            <h2>{ptBr.optionsAiTitle}</h2>
             <p>{ptBr.optionsAiHint}</p>
+            <label>
+              {ptBr.optionsAiProvider}
+              <select
+                aria-label={ptBr.optionsAiProvider}
+                value={settings.provider}
+                onInput={(event) => {
+                  const target = event.currentTarget as HTMLSelectElement;
+                  setSettings((previous) => ({
+                    ...previous,
+                    provider: target.value === "openrouter" || target.value === "ollama"
+                      ? target.value
+                      : "none",
+                  }));
+                }}
+              >
+                <option value="none">{ptBr.optionsAiProviderNone}</option>
+                <option value="openrouter">{ptBr.optionsAiProviderOpenRouter}</option>
+                <option value="ollama">{ptBr.optionsAiProviderOllama}</option>
+              </select>
+            </label>
+            {settings.provider === "ollama" ? (
+              <>
+                <label>
+                  {ptBr.optionsOllamaModel}
+                  <input
+                    aria-label={ptBr.optionsOllamaModel}
+                    type="text"
+                    value={settings.ollama.model ?? ""}
+                    onInput={(event) => {
+                      const target = event.currentTarget as HTMLInputElement;
+                      setSettings((previous) => ({
+                        ...previous,
+                        ollama: { model: target.value },
+                      }));
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!storageReady}
+                  onClick={() => void handleOllamaPermission()}
+                >
+                  {ptBr.optionsOllamaPermission}
+                </button>
+              </>
+            ) : null}
             {sensitiveFieldCategories.map((category) => (
               <label key={category}>
                 <input

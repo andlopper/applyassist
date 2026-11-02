@@ -25,6 +25,14 @@ export class AiProviderError extends Error {
   constructor(
     readonly code: "daily-limit" | "unavailable",
     message: string,
+    readonly reason?:
+      | "network"
+      | "forbidden"
+      | "server-response"
+      | "http-response"
+      | "invalid-stream"
+      | "stream-unavailable"
+      | "stream-read",
   ) {
     super(message);
   }
@@ -136,17 +144,20 @@ function mapOllamaError(status: number, extensionOrigin: string): Error {
     return new AiProviderError(
       "unavailable",
       `O Ollama bloqueou a extensão. ${getOllamaOriginInstruction(extensionOrigin)}`,
+      "forbidden",
     );
   }
   if (status >= 500) {
     return new AiProviderError(
       "unavailable",
       "O Ollama não respondeu corretamente. Verifique o serviço e tente novamente.",
+      "server-response",
     );
   }
   return new AiProviderError(
     "unavailable",
     "O Ollama não respondeu como esperado. Verifique o endereço e tente novamente.",
+    "http-response",
   );
 }
 
@@ -159,11 +170,19 @@ function parseOllamaEvent(line: string): string {
   try {
     event = JSON.parse(line) as unknown;
   } catch {
-    throw new AiProviderError("unavailable", "O Ollama retornou um evento de streaming inválido.");
+    throw new AiProviderError(
+      "unavailable",
+      "O Ollama retornou um evento de streaming inválido.",
+      "invalid-stream",
+    );
   }
 
   if (!isRecord(event)) {
-    throw new AiProviderError("unavailable", "O Ollama retornou um evento de streaming inválido.");
+    throw new AiProviderError(
+      "unavailable",
+      "O Ollama retornou um evento de streaming inválido.",
+      "invalid-stream",
+    );
   }
   const message = event.message;
   if (!isRecord(message) || typeof message.content !== "string") {
@@ -221,7 +240,7 @@ export class OllamaProvider implements AiProvider {
   constructor(options: OllamaProviderOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_OLLAMA_BASE_URL;
     this.extensionOrigin = options.extensionOrigin ?? "chrome-extension://<ID da extensão>";
-    this.fetchImpl = options.fetchFn ?? globalThis.fetch;
+    this.fetchImpl = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
   async listModels(signal?: AbortSignal): Promise<OllamaModel[]> {
@@ -289,7 +308,11 @@ export class OllamaProvider implements AiProvider {
 
     const body = response.body;
     if (!body || typeof body.getReader !== "function") {
-      throw new Error("O Ollama não retornou um stream válido para esta geração.");
+      throw new AiProviderError(
+        "unavailable",
+        "O Ollama não retornou um stream válido para esta geração.",
+        "stream-unavailable",
+      );
     }
 
     const reader = body.getReader();
@@ -297,7 +320,17 @@ export class OllamaProvider implements AiProvider {
     let buffer = "";
 
     while (true) {
-      const { value, done } = await reader.read();
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await reader.read();
+      } catch {
+        throw new AiProviderError(
+          "unavailable",
+          "A conexão com o Ollama foi interrompida durante a geração.",
+          "stream-read",
+        );
+      }
+      const { value, done } = result;
       if (done) {
         break;
       }
@@ -328,6 +361,7 @@ export class OllamaProvider implements AiProvider {
         throw new AiProviderError(
           "unavailable",
           `Não foi possível acessar o Ollama. Confirme se está em execução e se a origem da extensão está permitida. ${getOllamaOriginInstruction(this.extensionOrigin)}`,
+          "network",
         );
       }
       throw error;
@@ -345,7 +379,7 @@ export class OpenRouterProvider implements AiProvider {
   constructor(options: OpenRouterProviderOptions = {}) {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    this.fetchImpl = options.fetchFn ?? globalThis.fetch;
+    this.fetchImpl = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
   async listModels(signal?: AbortSignal): Promise<OpenRouterModel[]> {
