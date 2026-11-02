@@ -20,4 +20,10 @@ export default tseslint.config(
       globals: globals.browser,
     },
   },
+  {
+    files: ["tests/fixtures/**/*.js"],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
 );

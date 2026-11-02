@@ -235,5 +235,6 @@ Testes de prompt (T-20): tem papel, regras, few-shot, formato de saída, delimit
 
 ## §15 Testes e portões
 Scripts: `typecheck` (`tsc --noEmit`), `lint`, `test` (`vitest run --coverage`), `build`, `check:manifest`, `check:secrets` (padrões de chave de API e chaves privadas em arquivos versionados), `gates` (todos, em ordem, parando no primeiro erro), `e2e` (Playwright, separado até a T-23).
+`npm run e2e` recompila `dist`, inicia o servidor local das fixtures e executa Playwright em Chromium com a extensão carregada. O service worker real inicia; como o Playwright não aciona a barra de ferramentas neste fluxo, o bundle de content é executado diretamente na fixture com um runtime falso. Assim, os E2E não exercitam o gesto nem a injeção `activeTab`, cobertos pelos testes do background. Instale o navegador uma vez com `npx playwright install chromium`.
 Fixtures em `tests/fixtures/*.html`: formulário simples; React controlado; campo-isca; várias etapas; rótulos PT/EN/ES. Dados fictícios.
 Metas: `src/core` ≥ 90% linhas; geral ≥ 80%.

@@ -6,10 +6,12 @@ Formato: `Q-nn` · pergunta · quem resolve · tarefa relacionada · status. A I
 - **Q-02** — O login PKCE do OpenRouter funciona com `chrome.identity.launchWebAuthFlow` e a URL `https://<id>.chromiumapp.org/`? (T-18) — aberto
 - **Q-03** — Nome exato do campo de privacidade por requisição no OpenRouter (`provider.data_collection`)? Confirmar na documentação oficial. (T-19) — aberto
 - **Q-04** — `chrome.sidePanel.open()` funciona a partir do comando de teclado e do clique do ícone em site bloqueado? (T-09, T-22) — aberto
-- **Q-05** — Playwright consegue carregar a extensão em modo headless nesta versão ou exige janela visível? (T-23) — aberto
+- **Q-05** — Playwright consegue carregar a extensão em modo headless nesta versão ou exige janela visível? (T-23) — resolvido: Chromium 153 headless carregou a extensão e iniciou o service worker.
 - **Q-06** — Qualidade em português dos modelos gratuitos do OpenRouter (medir com 5 perguntas reais). (T-21) — aberto
 - **Q-07** — Sites que o usuário usa: LinkedIn (bloqueado), Gupy, InHire, Sólides e outros. Verificar termos de InHire e Sólides diretamente (links dos termos ainda não localizados) e testar manualmente, sem enviar. — parcialmente resolvido
 - **Q-09** — Os formulários de InHire e Sólides usam Shadow DOM, iframes ou campos customizados (listas, radios)? Descobrir só em teste manual local antes de prometer suporte. (T-10, T-24) — aberto
 - **Q-08** — Formulários da Gupy usam Shadow DOM ou iframes? (T-10, T-24) — aberto
 - **Q-10** — Campos desconhecidos ou reconhecidos sem valor de perfil devem continuar agrupados em "Abertas" no overlay ou precisam de uma categoria própria? Até decidir, não são aplicáveis. (T-13) — aberto
 - **Q-11** — Qual identificador seguro e estável deve compor `jobKey` de `AnswerMemory`? Até decidir, respostas abertas ficam marcadas como escopo `job`, sem `jobKey`, e não são reaplicadas automaticamente. (T-15, T-16) — aberto
+- **Q-12** — `npm audit` reporta 12 vulnerabilidades em dependências de desenvolvimento, incluindo uma alta em `happy-dom@20.14.6` (afetada até `21.0.3`) e 11 moderadas no toolchain; `npm audit --omit=dev` está limpo. Revisar atualização/justificativa na T-25. — aberto
+- **Q-13** — Os E2E da T-23 não acionam a barra de ferramentas: carregam a extensão e o service worker real, mas executam o bundle de content diretamente com runtime falso. A injeção `activeTab` continua coberta pelos testes do background; se a suíte precisar exercitar o clique real, definir uma automação de UI sem ampliar permissões. — aberto

@@ -19,6 +19,7 @@
   },
   "include": [
     "manifest.config.ts",
+    "playwright.config.ts",
     "scripts/**/*.mjs",
     "src/**/*.ts",
     "src/**/*.tsx",

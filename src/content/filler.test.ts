@@ -12,7 +12,12 @@ describe("content filler", () => {
 
     const result = fillField(input, "Maria Souza");
 
-    expect(result).toMatchObject({ applied: true, previous: "", value: "Maria Souza", reason: "filled" });
+    expect(result).toMatchObject({
+      applied: true,
+      previous: "",
+      value: "Maria Souza",
+      reason: "filled",
+    });
     expect(input.value).toBe("Maria Souza");
     expect(onInput).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -58,21 +63,31 @@ describe("content filler", () => {
     expect(select.value).toBe("sp");
   });
 
-  it("works with controlled inputs that define custom value setters", () => {
+  it("updates controlled input state through input events after setting the native value", () => {
     const input = document.createElement("input");
-    let controlledValue = "inicial";
+    const nativeDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+    let trackedValue = "inicial";
+    let observedChanges = 0;
 
     Object.defineProperty(input, "value", {
-      get: () => controlledValue,
+      get: () => nativeDescriptor?.get?.call(input) ?? "",
       set: (nextValue: string) => {
-        controlledValue = nextValue;
+        trackedValue = nextValue;
+        nativeDescriptor?.set?.call(input, nextValue);
       },
       configurable: true,
+    });
+    input.addEventListener("input", () => {
+      if (input.value !== trackedValue) {
+        trackedValue = input.value;
+        observedChanges += 1;
+      }
     });
 
     const result = fillField(input, "atualizado", { allowOverwrite: true });
 
     expect(result).toMatchObject({ applied: true, value: "atualizado" });
-    expect(controlledValue).toBe("atualizado");
+    expect(trackedValue).toBe("atualizado");
+    expect(observedChanges).toBe(1);
   });
 });

@@ -26,5 +26,9 @@ Este pacote contém tudo o que o GitHub Copilot precisa para construir o projeto
 4. Repita com `/01-implement-task` para `T-02`, `T-03`… na ordem do `docs/PLAN.md`.
 5. Antes de publicar, rode `/02-security-review`.
 
+## Testes E2E
+
+Instale o Chromium compatível com Playwright uma vez com `npx playwright install chromium`. Em seguida, `npm run e2e` compila a extensão e executa os cenários em Chromium com fixtures locais e dados fictícios.
+
 ## Princípios
 Local-first · sem envio automático · sem scraping · sem telemetria · dados sensíveis só com seu consentimento e nunca para a IA · tudo rastreável a uma decisão.

@@ -14,20 +14,24 @@
     "check:manifest": "node scripts/check-manifest.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "gates": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:manifest && npm run check:secrets",
-    "format": "prettier --write package.json tsconfig.json .prettierrc.json .vscode/extensions.json .github/workflows/ci.yml eslint.config.js manifest.config.ts vitest.config.ts scripts/*.mjs src/**/*.ts src/**/*.tsx src/**/*.html tests/**/*.ts",
-    "format:check": "prettier --check package.json tsconfig.json .prettierrc.json .vscode/extensions.json .github/workflows/ci.yml eslint.config.js manifest.config.ts vitest.config.ts scripts/*.mjs src/**/*.ts src/**/*.tsx src/**/*.html tests/**/*.ts"
+    "e2e": "npm run build && playwright test",
+    "format": "prettier --write package.json tsconfig.json .prettierrc.json .vscode/extensions.json .github/workflows/ci.yml eslint.config.js manifest.config.ts playwright.config.ts vitest.config.ts scripts/*.mjs src/**/*.ts src/**/*.tsx src/**/*.html tests/**/*.ts tests/fixtures/*.html tests/fixtures/*.js",
+    "format:check": "prettier --check package.json tsconfig.json .prettierrc.json .vscode/extensions.json .github/workflows/ci.yml eslint.config.js manifest.config.ts playwright.config.ts vitest.config.ts scripts/*.mjs src/**/*.ts src/**/*.tsx src/**/*.html tests/**/*.ts tests/fixtures/*.html tests/fixtures/*.js"
   },
   "dependencies": {
     "preact": "11.0.1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
     "@vitest/coverage-v8": "5.0.3",
     "eslint": "10.12.0",
     "globals": "17.13.0",
     "happy-dom": "20.14.6",
     "prettier": "3.9.9",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
     "vite": "8.3.4",

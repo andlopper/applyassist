@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Campos proibidos e iscas de teste</title>
+    <style>
+      .offscreen {
+        height: 24px;
+        left: -9999px;
+        position: absolute;
+        top: 0;
+        width: 160px;
+      }
+
+      .one-pixel {
+        height: 1px;
+        position: absolute;
+        width: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="application-form">
+      <label for="contact-email">E-mail</label>
+      <input id="contact-email" name="email" type="email" />
+      <label for="decoy-email">E-mail</label>
+      <input id="decoy-email" class="offscreen" name="alternateEmail" type="email" />
+      <label for="one-pixel">Nome completo</label>
+      <input id="one-pixel" class="one-pixel" name="onePixel" type="text" />
+      <label for="verification-code">Código de verificação</label>
+      <input
+        id="verification-code"
+        name="verificationCode"
+        type="text"
+        autocomplete="one-time-code"
+      />
+      <label for="password">Senha</label>
+      <input id="password" name="password" type="password" />
+      <label for="accept-terms">
+        <input id="accept-terms" name="acceptTerms" type="checkbox" />
+        Li e aceito os termos
+      </label>
+    </form>
+    <script src="/watch-form-actions.js"></script>
+  </body>
+</html>

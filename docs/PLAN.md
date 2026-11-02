@@ -101,7 +101,7 @@ Depende de: T-19, T-20 | Ler: FDD §12 (Side panel), §11 | Reqs: R-16, R-17
 Aceite: gerar a partir de texto colado, copiar saída; aba Conexão IA (login/chave, modelo, aviso do que é enviado); sem acesso à página; comando `Alt+Shift+P` abre o painel.
 
 ## Fase 4 — Endurecimento e portfólio
-### [ ] T-23 — E2E com Playwright
+### [x] T-23 — E2E com Playwright
 Depende de: T-13, T-21 | Ler: FDD §15 | Reqs: R-21, R-05
 Aceite: fixtures (simples, React controlado, campo-isca, várias etapas) carregando a extensão em Chromium; verifica preenchimento, zero cliques/submits, campos proibidos intocados, campo-isca vazio; `npm run e2e` documentado.
 

@@ -26,7 +26,9 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
-function getCurrentValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string {
+function getCurrentValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+): string {
   if (element instanceof HTMLSelectElement) {
     return element.value ?? "";
   }
@@ -38,24 +40,21 @@ function setNativeValue(
   element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   value: string,
 ): void {
-  const ownDescriptor = Object.getOwnPropertyDescriptor(element, "value");
-  const descriptor = ownDescriptor ??
-    Object.getOwnPropertyDescriptor(
-      element instanceof HTMLSelectElement
-        ? HTMLSelectElement.prototype
-        : element instanceof HTMLInputElement
-          ? HTMLInputElement.prototype
-          : HTMLTextAreaElement.prototype,
-      "value",
-    );
+  const descriptor = Object.getOwnPropertyDescriptor(
+    element instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : element instanceof HTMLInputElement
+        ? HTMLInputElement.prototype
+        : HTMLTextAreaElement.prototype,
+    "value",
+  );
 
   if (descriptor && typeof descriptor.set === "function") {
     descriptor.set.call(element, value);
     return;
   }
 
-  const property = "value" as const;
-  element[property] = value;
+  element.value = value;
 }
 
 function dispatchValueEvents(
@@ -80,14 +79,12 @@ function isFillableElement(
   );
 }
 
-function resolveSelectValue(
-  element: HTMLSelectElement,
-  rawValue: string,
-): string | undefined {
+function resolveSelectValue(element: HTMLSelectElement, rawValue: string): string | undefined {
   const normalizedValue = normalizeText(rawValue);
-  const optionMatch = Array.from(element.options).find((option) =>
-    normalizeText(option.value ?? "") === normalizedValue ||
-    normalizeText(option.textContent ?? "") === normalizedValue,
+  const optionMatch = Array.from(element.options).find(
+    (option) =>
+      normalizeText(option.value ?? "") === normalizedValue ||
+      normalizeText(option.textContent ?? "") === normalizedValue,
   );
 
   if (optionMatch) {
@@ -139,7 +136,9 @@ export function fillField(
   }
 
   const nextValue =
-    element instanceof HTMLSelectElement ? resolveSelectValue(element, rawValue) ?? rawValue : rawValue;
+    element instanceof HTMLSelectElement
+      ? (resolveSelectValue(element, rawValue) ?? rawValue)
+      : rawValue;
 
   previousValueByElement.set(element, previous);
   setNativeValue(element, nextValue);
@@ -158,7 +157,9 @@ export function fillFields(
   fields: ReadonlyArray<{ element: Element; value: string }>,
   options: FillFieldOptions = {},
 ): FillResult[] {
-  return fields.map(({ element, value }) => fillField(element, value, options)).filter((entry): entry is FillResult => entry !== null);
+  return fields
+    .map(({ element, value }) => fillField(element, value, options))
+    .filter((entry): entry is FillResult => entry !== null);
 }
 
 export function undoFieldFill(
