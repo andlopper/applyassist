@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
@@ -76,6 +76,15 @@ await rename(
 );
 
 await mkdir(outputDirectory, { recursive: true });
+const iconDirectory = resolve(outputDirectory, "icons");
+await mkdir(iconDirectory, { recursive: true });
+for (const size of [16, 32, 48, 128]) {
+  const iconName = `icon-${size}.png`;
+  await copyFile(
+    resolve(projectRoot, "assets/icons", iconName),
+    resolve(iconDirectory, iconName),
+  );
+}
 await writeFile(
   resolve(outputDirectory, "manifest.json"),
   `${JSON.stringify(createManifest(packageJson.version), null, 2)}\n`,

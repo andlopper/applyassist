@@ -113,7 +113,7 @@ Aceite: `docs/SPIKES.md` registra se `allFrames` com `activeTab` alcança iframe
 Depende de: T-23 | Ler: FDD §13
 Aceite: prompt `02-security-review` sem FAIL; `npm audit --omit=dev` limpo ou justificado; permissões revisadas; nenhum `web_accessible_resources`.
 
-### [ ] T-26 — README e portfólio
+### [x] T-26 — README e portfólio
 Depende de: T-25 | Ler: PRD, COMPLIANCE
 Aceite: README em pt-BR com demonstração (GIF com dados falsos), diagrama de arquitetura, instruções de instalação, seção de conformidade (sites, LinkedIn, limites), LICENSE, ícones 16/32/48/128, política de privacidade curta.
 

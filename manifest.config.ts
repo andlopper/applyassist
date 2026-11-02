@@ -4,8 +4,18 @@ export function createManifest(version: string) {
     name: "ApplyAssist",
     version,
     description: "Ajuda a preencher formulários de candidatura. Você revisa e envia.",
+    icons: {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png",
+    },
     action: {
       default_title: "ApplyAssist",
+      default_icon: {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+      },
     },
     background: {
       service_worker: "background.js",
