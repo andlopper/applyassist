@@ -58,11 +58,26 @@ describe("profile validation and JSON import", () => {
     );
 
     expect(profile.values).toMatchObject({
-      fullName: "Ana Silva",
+      firstName: "Ana Silva",
       email: "ana@exemplo.com",
       phone: "+55 11 99999-9999",
       linkedinUrl: "https://linkedin.com/in/ana-silva",
     });
+  });
+
+  it("parses the last company under the current-company profile field", () => {
+    const profile = parseProfileText("Última empresa: Exemplo Tecnologia");
+
+    expect(profile.values).toMatchObject({
+      currentCompany: "Exemplo Tecnologia",
+    });
+  });
+
+  it("parses a standalone name as first name, not as full name", () => {
+    const profile = parseProfileText("Nome: Ana");
+
+    expect(profile.values).toMatchObject({ firstName: "Ana" });
+    expect(profile.values.fullName).toBeUndefined();
   });
 });
 

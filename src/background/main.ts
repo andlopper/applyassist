@@ -589,13 +589,34 @@ async function getFillValues(
     if (!isFieldKey(key) || isSensitiveFieldBlocked(key)) {
       continue;
     }
-    const value = storedProfile.value.values[key];
+    const storedValues = storedProfile.value.values;
+    const value = key === "fullName" ? resolveFullName(storedValues) : storedValues[key];
     if (typeof value === "string" && value.trim().length > 0) {
       values[key] = value;
     }
   }
 
   return { values };
+}
+
+function resolveFullName(values: Record<string, unknown>): string | undefined {
+  const firstName = values.firstName;
+  const lastName = values.lastName;
+  if (
+    typeof firstName === "string" &&
+    firstName.trim().length > 0 &&
+    typeof lastName === "string" &&
+    lastName.trim().length > 0
+  ) {
+    return `${firstName.trim()} ${lastName.trim()}`;
+  }
+
+  const fullName = values.fullName;
+  if (typeof fullName === "string" && fullName.trim().length > 0) {
+    return fullName;
+  }
+
+  return undefined;
 }
 
 async function handleRecordApplication(

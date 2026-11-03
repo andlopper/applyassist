@@ -93,7 +93,7 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders onboarding form and saves profile data after review", async () => {
+  it("renders onboarding form and saves profile data", async () => {
     render(<OptionsApp />, document.body);
     await flushUi();
     await flushUi();
@@ -102,22 +102,79 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     textarea.value = "Nome: Ana Silva\nE-mail: ana@exemplo.com\nTelefone: +55 11 99999-9999";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
 
+    buttonByName("IA").click();
+    await flushUi();
+
     const checkbox = Array.from(document.querySelectorAll("input[type='checkbox']")).find((input) =>
       input.parentElement?.textContent?.includes("Documentos"),
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event("change", { bubbles: true }));
 
+    buttonByName("Perfil").click();
+    await flushUi();
     buttonByName("Salvar perfil").click();
     await flushUi();
 
     expect(document.body.textContent).toContain("Perfil salvo.");
-    expect(document.body.textContent).toContain("Ana Silva");
+    expect(document.querySelector(".options-toast-success")).not.toBeNull();
+    (document.querySelector(".options-toast-close") as HTMLButtonElement).click();
+    await flushUi();
+    expect(document.querySelector(".options-toast")).toBeNull();
+    expect(storage.values.get("profile:v1")).toMatchObject({
+      value: { values: { firstName: "Ana Silva" } },
+    });
+  });
+
+  it("keeps AI settings in a separate tab and removes the redundant full-name field", async () => {
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    expect(document.body.textContent).not.toContain("Revisar antes de salvar");
+    expect(document.body.textContent).toContain("Empresa atual ou última empresa");
+    expect(document.body.textContent).toContain("Pretensão salarial");
+    expect(document.body.textContent).toContain("Os dados importados preencherão os campos abaixo");
+    expect(document.body.textContent).toContain(
+      "serão usados como contexto nas respostas geradas pela IA",
+    );
+    expect(document.body.textContent).toContain(
+      "Dados sensíveis e de contato não são enviados à IA",
+    );
+    expect(document.querySelector(".options-file-upload")).not.toBeNull();
+    expect(
+      Array.from(document.querySelectorAll("label")).some(
+        (label) => label.textContent?.trim() === "Nome completo",
+      ),
+    ).toBe(false);
+    expect(document.querySelector("select[aria-label='Provedor de IA']")).toBeNull();
+
+    buttonByName("IA").click();
+    await flushUi();
+
+    const provider = document.querySelector(
+      "select[aria-label='Provedor de IA']",
+    ) as HTMLSelectElement;
+    expect(provider).not.toBeNull();
+    expect(document.querySelector(".options-ai-connection")).not.toBeNull();
+    expect(document.querySelector(".options-ai-privacy")).not.toBeNull();
+
+    provider.value = "openrouter";
+    provider.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushUi();
+    buttonByName("Salvar configurações").click();
+    await flushUi();
+
+    expect(storage.values.get("settings:v1")).toMatchObject({
+      value: { provider: "openrouter" },
+    });
   });
 
   it("requests Ollama host access only after the explicit permission button is clicked", async () => {
     render(<OptionsApp />, document.body);
     await flushUi();
+    await flushUi();
+    buttonByName("IA").click();
     await flushUi();
 
     const provider = document.querySelector(
@@ -159,6 +216,8 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     render(<OptionsApp />, document.body);
     await flushUi();
     await flushUi();
+    buttonByName("IA").click();
+    await flushUi();
     const provider = document.querySelector(
       "select[aria-label='Provedor de IA']",
     ) as HTMLSelectElement;
@@ -193,6 +252,8 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     render(<OptionsApp />, document.body);
     await flushUi();
     await flushUi();
+    buttonByName("IA").click();
+    await flushUi();
 
     buttonByName("Permitir acesso ao Ollama").click();
     await flushUi();
@@ -209,7 +270,11 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     await flushUi();
 
     expect(document.body.textContent).toContain("Não foi possível acessar os dados locais");
+    expect(document.querySelector(".options-toast-error")).not.toBeNull();
     expect(buttonByName("Salvar perfil").disabled).toBe(true);
+    (document.querySelector(".options-toast-close") as HTMLButtonElement).click();
+    await flushUi();
+    expect(document.querySelector(".options-toast")).toBeNull();
     expect(window.localStorage.getItem("profile:v1")).toBe("must-not-be-read");
   });
 
@@ -225,6 +290,19 @@ describe("R-08/R-10 options onboarding and learning review", () => {
             hits: 2,
             lastSeen: "2026-01-01T00:00:00.000Z",
             host: "example.org",
+          },
+        ],
+      },
+      "answers:v1": {
+        schemaVersion: 1,
+        value: [
+          {
+            labelNorm: "why interested",
+            answer: "I enjoy solving practical problems.",
+            scope: "host",
+            host: "example.org",
+            reviewed: false,
+            createdAt: "2026-01-01T00:00:00.000Z",
           },
         ],
       },
@@ -251,19 +329,33 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     await flushUi();
 
     const mappingLabel = document.querySelector(
-      "input[aria-label='Editar rótulo preferred city']",
+      "input[aria-label='Editar pergunta preferred city']",
     ) as HTMLInputElement;
     expect(mappingLabel.value).toBe("preferred city");
+    const mappingTable = document.querySelector(".options-learning-table");
+    expect(mappingTable?.querySelector("th:first-child")?.textContent).toBe("");
+    expect(mappingTable?.querySelector("th:nth-child(2)")?.textContent).toBe("Pergunta");
+    expect(mappingTable?.querySelector("tbody tr:first-child td:first-child")?.className).toContain(
+      "options-learning-select-cell",
+    );
+    const answersTable = document.querySelectorAll(".options-learning-table")[1];
+    expect(answersTable?.querySelector("tbody tr:first-child td:first-child")?.className).toContain(
+      "options-learning-select-cell",
+    );
+    expect(answersTable?.querySelectorAll(".options-learning-actions button")).toHaveLength(2);
+    expect(answersTable?.querySelector(".options-learning-approve")?.parentElement?.className).toBe(
+      "options-learning-actions",
+    );
+    expect(answersTable?.querySelector(".options-learning-delete")).not.toBeNull();
+    expect(document.body.textContent).not.toContain("Não aprender esta pergunta");
     expect(document.body.textContent).toContain("Pendente");
 
-    buttonByName("Não aprender este rótulo").click();
-    await flushUi();
     buttonByName("Manter valor do perfil").click();
     await flushUi();
 
     expect(storage.values.get("ignored-labels:v1")).toEqual({
       schemaVersion: 1,
-      value: ["preferred city"],
+      value: [],
     });
     expect(storage.values.get("conflicts:v1")).toEqual({ schemaVersion: 1, value: [] });
     expect(storage.values.get("profile:v1")).toMatchObject({
@@ -349,7 +441,7 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     await flushUi();
 
     const labelInput = document.querySelector(
-      "input[aria-label='Editar rótulo preferred city']",
+      "input[aria-label='Editar pergunta preferred city']",
     ) as HTMLInputElement;
     labelInput.value = "cidade preferida";
     labelInput.dispatchEvent(new Event("input", { bubbles: true }));

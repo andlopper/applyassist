@@ -23,7 +23,7 @@ const PROFILE_FIELD_LABELS: Record<FieldKey, string> = {
   noticePeriod: "Prazo de aviso",
   workModel: "Modelo de trabalho",
   englishLevel: "Inglês",
-  currentCompany: "Empresa atual",
+  currentCompany: "Empresa atual ou última empresa",
   currentRole: "Cargo atual",
   yearsExperience: "Experiência",
   cpf: "CPF",
@@ -104,7 +104,7 @@ export function parseProfileText(raw: string): Profile {
 
   const values: Partial<Record<FieldKey, string>> = {};
   const fieldAliases: Record<FieldKey, readonly string[]> = {
-    fullName: ["nome completo", "nome", "full name"],
+    fullName: ["nome completo", "full name"],
     firstName: ["nome", "first name", "given name"],
     lastName: ["sobrenome", "last name", "family name"],
     email: ["email", "e-mail", "mail"],
@@ -120,7 +120,13 @@ export function parseProfileText(raw: string): Profile {
     noticePeriod: ["prazo de aviso", "notice period"],
     workModel: ["modelo de trabalho", "work model"],
     englishLevel: ["ingles", "english level"],
-    currentCompany: ["empresa atual", "current company"],
+    currentCompany: [
+      "empresa atual",
+      "ultima empresa",
+      "empresa anterior",
+      "current company",
+      "last company",
+    ],
     currentRole: ["cargo atual", "cargo", "current role"],
     yearsExperience: ["anos de experiencia", "years experience"],
     cpf: ["cpf"],

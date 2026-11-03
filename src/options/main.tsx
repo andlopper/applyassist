@@ -56,8 +56,24 @@ const EMPTY_LEARNING_STATE: LearningState = {
   conflicts: [],
   ignoredLabels: [],
 };
+type ToastTone = "success" | "warning" | "error";
+interface OptionsToast {
+  message: string;
+  tone: ToastTone;
+}
+
+const TOAST_ERROR_MESSAGES = new Set<string>([
+  ptBr.optionsStorageError,
+  ptBr.optionsOllamaPermissionError,
+  ptBr.optionsImportInvalid,
+  ptBr.optionsLearningInvalid,
+  ptBr.optionsExportError,
+]);
+const TOAST_WARNING_MESSAGES = new Set<string>([
+  ptBr.optionsOllamaPermissionDenied,
+  ptBr.optionsProfileParsed,
+]);
 const PROFILE_FIELDS: FieldKey[] = [
-  "fullName",
   "firstName",
   "lastName",
   "email",
@@ -68,6 +84,7 @@ const PROFILE_FIELDS: FieldKey[] = [
   "linkedinUrl",
   "githubUrl",
   "portfolioUrl",
+  "salaryExpectation",
   "currentRole",
   "currentCompany",
   "yearsExperience",
@@ -294,6 +311,16 @@ function normalizeProfile(values: Partial<Record<FieldKey, string>>): Profile {
   return validateProfile({ values, updatedAt: new Date().toISOString() });
 }
 
+function getToastTone(message: string): ToastTone {
+  if (TOAST_ERROR_MESSAGES.has(message)) {
+    return "error";
+  }
+  if (TOAST_WARNING_MESSAGES.has(message)) {
+    return "warning";
+  }
+  return "success";
+}
+
 export function OptionsApp() {
   const [profile, setProfile] = useState<Profile>({
     values: {},
@@ -302,11 +329,19 @@ export function OptionsApp() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [learning, setLearning] = useState<LearningState>(EMPTY_LEARNING_STATE);
   const [storageReady, setStorageReady] = useState(false);
-  const [activeTab, setActiveTab] = useState<"profile" | "learning" | "data">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "ai" | "learning" | "data">("profile");
   const [selectedRecords, setSelectedRecords] = useState<string[]>([]);
   const [pasteText, setPasteText] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
+  const [toast, setToast] = useState<OptionsToast | null>(null);
   const [exportUrl, setExportUrl] = useState("");
+
+  useEffect(() => {
+    if (toast === null) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
 
   useEffect(() => {
     let active = true;
@@ -362,12 +397,12 @@ export function OptionsApp() {
     };
   }, [exportUrl]);
 
-  const reviewEntries = Object.entries(profile.values).filter(
-    (entry): entry is [FieldKey, string] =>
-      typeof entry[1] === "string" && entry[1].trim().length > 0,
-  );
   const hasLearningRecords =
     learning.mappings.length > 0 || learning.answers.length > 0 || learning.conflicts.length > 0;
+
+  function setStatusMessage(message: string): void {
+    setToast({ message, tone: getToastTone(message) });
+  }
 
   function updateProfileValue(fieldKey: FieldKey, value: string): void {
     setProfile((previous) => ({
@@ -391,7 +426,7 @@ export function OptionsApp() {
     const parsed = parseProfileText(raw);
     setPasteText(raw);
     setProfile(parsed);
-    setStatusMessage(ptBr.optionsReview);
+    setStatusMessage(ptBr.optionsProfileParsed);
   }
 
   async function handleSave(): Promise<void> {
@@ -407,6 +442,23 @@ export function OptionsApp() {
         [SETTINGS_STORAGE_KEY]: { schemaVersion: 1, value: savedSettings },
       });
       setStatusMessage(ptBr.optionsProfileSaved);
+    } catch {
+      setStatusMessage(ptBr.optionsStorageError);
+    }
+  }
+
+  async function handleSaveSettings(): Promise<void> {
+    if (!storageReady) {
+      setStatusMessage(ptBr.optionsStorageError);
+      return;
+    }
+    const savedSettings = normalizeSettings(settings);
+    try {
+      await writeStorageItems({
+        [SETTINGS_STORAGE_KEY]: { schemaVersion: 1, value: savedSettings },
+      });
+      setSettings(savedSettings);
+      setStatusMessage(ptBr.optionsSettingsSaved);
     } catch {
       setStatusMessage(ptBr.optionsStorageError);
     }
@@ -585,23 +637,6 @@ export function OptionsApp() {
     });
   }
 
-  async function ignoreLabel(label: string): Promise<void> {
-    const normalizedLabel = normalizeLabel(label);
-    if (!normalizedLabel) {
-      return;
-    }
-    await persistLearning({
-      ...learning,
-      mappings: learning.mappings.filter(
-        (mapping) => normalizeLabel(mapping.labelNorm) !== normalizedLabel,
-      ),
-      answers: learning.answers.filter(
-        (answer) => normalizeLabel(answer.labelNorm) !== normalizedLabel,
-      ),
-      ignoredLabels: [...new Set([...(learning.ignoredLabels ?? []), normalizedLabel])],
-    });
-  }
-
   async function resolveConflict(
     index: number,
     resolution: "keep" | "replace" | "job",
@@ -761,16 +796,23 @@ export function OptionsApp() {
   }
 
   return (
-    <main>
+    <main className="options-page">
       <h1>{ptBr.optionsTitle}</h1>
       <p>{ptBr.optionsWelcome}</p>
-      <nav aria-label={ptBr.optionsNavigationLabel}>
+      <nav className="options-tabs" aria-label={ptBr.optionsNavigationLabel}>
         <button
           type="button"
           aria-current={activeTab === "profile" ? "page" : undefined}
           onClick={() => setActiveTab("profile")}
         >
           {ptBr.optionsTabProfile}
+        </button>
+        <button
+          type="button"
+          aria-current={activeTab === "ai" ? "page" : undefined}
+          onClick={() => setActiveTab("ai")}
+        >
+          {ptBr.optionsTabAi}
         </button>
         <button
           type="button"
@@ -790,18 +832,23 @@ export function OptionsApp() {
 
       {activeTab === "profile" ? (
         <>
-          <section>
-            <h2>{ptBr.optionsPasteText}</h2>
-            <textarea
-              aria-label={ptBr.optionsPasteText}
-              rows={8}
-              value={pasteText}
-              onInput={(event) => {
-                const target = event.currentTarget as HTMLTextAreaElement;
-                applyParsedProfile(target.value);
-              }}
-            />
-            <label>
+          <section className="options-card">
+            <h2>{ptBr.optionsImportProfileTitle}</h2>
+            <p>{ptBr.optionsImportProfileHint}</p>
+            <label className="options-paste-label">
+              {ptBr.optionsPasteText}
+              <textarea
+                aria-label={ptBr.optionsPasteText}
+                placeholder={ptBr.optionsPastePlaceholder}
+                rows={8}
+                value={pasteText}
+                onInput={(event) => {
+                  const target = event.currentTarget as HTMLTextAreaElement;
+                  applyParsedProfile(target.value);
+                }}
+              />
+            </label>
+            <label className="options-file-upload">
               {ptBr.optionsUploadFile}
               <input
                 type="file"
@@ -811,9 +858,9 @@ export function OptionsApp() {
             </label>
           </section>
 
-          <section>
+          <section className="options-card">
             <h2>{ptBr.optionsManualForm}</h2>
-            <div>
+            <div className="options-profile-grid">
               {PROFILE_FIELDS.map((field) => (
                 <label key={field}>
                   {ptBr.optionsFieldLabels[field]}
@@ -830,32 +877,40 @@ export function OptionsApp() {
             </div>
           </section>
 
-          <section>
-            <h2>{ptBr.optionsReview}</h2>
-            <ul>
-              {reviewEntries.map(([key, value]) => (
-                <li key={key}>
-                  <strong>{ptBr.optionsFieldLabels[key]}</strong>: {value}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <button
+            className="options-primary"
+            type="button"
+            disabled={!storageReady}
+            onClick={() => void handleSave()}
+          >
+            {ptBr.optionsSave}
+          </button>
+        </>
+      ) : null}
 
-          <section>
-            <h2>{ptBr.optionsAiTitle}</h2>
-            <p>{ptBr.optionsAiHint}</p>
-            <label>
-              {ptBr.optionsAiProvider}
+      {activeTab === "ai" ? (
+        <section className="options-card">
+          <h2>{ptBr.optionsAiTitle}</h2>
+          <p>{ptBr.optionsAiHint}</p>
+          <div className="options-ai-layout">
+            <div className="options-ai-connection">
+              <h3>{ptBr.optionsAiConnectionTitle}</h3>
+              <label className="options-ai-provider-label" htmlFor="options-ai-provider">
+                {ptBr.optionsAiProvider}
+              </label>
               <select
+                className="options-ai-provider-select"
+                id="options-ai-provider"
                 aria-label={ptBr.optionsAiProvider}
                 value={settings.provider}
                 onInput={(event) => {
                   const target = event.currentTarget as HTMLSelectElement;
                   setSettings((previous) => ({
                     ...previous,
-                    provider: target.value === "openrouter" || target.value === "ollama"
-                      ? target.value
-                      : "none",
+                    provider:
+                      target.value === "openrouter" || target.value === "ollama"
+                        ? target.value
+                        : "none",
                   }));
                 }}
               >
@@ -863,12 +918,14 @@ export function OptionsApp() {
                 <option value="openrouter">{ptBr.optionsAiProviderOpenRouter}</option>
                 <option value="ollama">{ptBr.optionsAiProviderOllama}</option>
               </select>
-            </label>
-            {settings.provider === "ollama" ? (
-              <>
-                <label>
-                  {ptBr.optionsOllamaModel}
+              {settings.provider === "ollama" ? (
+                <>
+                  <label className="options-ai-model-label" htmlFor="options-ai-model">
+                    {ptBr.optionsOllamaModel}
+                  </label>
                   <input
+                    className="options-ai-model-input"
+                    id="options-ai-model"
                     aria-label={ptBr.optionsOllamaModel}
                     type="text"
                     value={settings.ollama.model ?? ""}
@@ -880,46 +937,55 @@ export function OptionsApp() {
                       }));
                     }}
                   />
+                  <button
+                    className="options-ai-permission"
+                    type="button"
+                    disabled={!storageReady}
+                    onClick={() => void handleOllamaPermission()}
+                  >
+                    {ptBr.optionsOllamaPermission}
+                  </button>
+                </>
+              ) : null}
+            </div>
+            <div className="options-ai-privacy">
+              <h3>{ptBr.optionsAiSensitiveTitle}</h3>
+              {sensitiveFieldCategories.map((category) => (
+                <label key={category}>
+                  <input
+                    type="checkbox"
+                    checked={settings.sensitiveEnabled[category] ?? false}
+                    onChange={(event) => {
+                      const target = event.currentTarget as HTMLInputElement;
+                      updateSensitiveCategory(category, target.checked);
+                    }}
+                  />
+                  {ptBr[
+                    `optionsCategory${category.charAt(0).toUpperCase() + category.slice(1)}` as keyof typeof ptBr
+                  ] ?? category}
                 </label>
-                <button
-                  type="button"
-                  disabled={!storageReady}
-                  onClick={() => void handleOllamaPermission()}
-                >
-                  {ptBr.optionsOllamaPermission}
-                </button>
-              </>
-            ) : null}
-            {sensitiveFieldCategories.map((category) => (
-              <label key={category}>
-                <input
-                  type="checkbox"
-                  checked={settings.sensitiveEnabled[category] ?? false}
-                  onChange={(event) => {
-                    const target = event.currentTarget as HTMLInputElement;
-                    updateSensitiveCategory(category, target.checked);
-                  }}
-                />
-                {ptBr[
-                  `optionsCategory${category.charAt(0).toUpperCase() + category.slice(1)}` as keyof typeof ptBr
-                ] ?? category}
-              </label>
-            ))}
-          </section>
-
-          <button type="button" disabled={!storageReady} onClick={() => void handleSave()}>
-            {ptBr.optionsSave}
+              ))}
+            </div>
+          </div>
+          <button
+            className="options-primary"
+            type="button"
+            disabled={!storageReady}
+            onClick={() => void handleSaveSettings()}
+          >
+            {ptBr.optionsSaveSettings}
           </button>
-        </>
+        </section>
       ) : null}
 
       {activeTab === "learning" ? (
-        <section>
+        <section className="options-card">
           <h2>{ptBr.optionsLearningTitle}</h2>
           {!hasLearningRecords ? <p>{ptBr.optionsLearningEmpty}</p> : null}
           {learning.mappings.length > 0 || learning.answers.length > 0 ? (
             <>
               <button
+                className="options-learning-approve"
                 type="button"
                 disabled={selectedRecords.length === 0}
                 onClick={() => void approveSelected()}
@@ -927,6 +993,7 @@ export function OptionsApp() {
                 {ptBr.optionsLearningApproveSelected}
               </button>
               <button
+                className="options-learning-delete"
                 type="button"
                 disabled={selectedRecords.length === 0}
                 onClick={() => void deleteSelected()}
@@ -936,162 +1003,180 @@ export function OptionsApp() {
             </>
           ) : null}
           {learning.mappings.length > 0 ? (
-            <section>
+            <section className="options-card">
               <h3>{ptBr.optionsLearningMappings}</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>{ptBr.optionsLearningSelectLabel}</th>
-                    <th>{ptBr.optionsLearningLabel}</th>
-                    <th>{ptBr.optionsLearningField}</th>
-                    <th>{ptBr.optionsLearningStatus}</th>
-                    <th>{ptBr.optionsLearningHost}</th>
-                    <th>{ptBr.optionsLearningActions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {learning.mappings.map((mapping, index) => (
-                    <tr key={`mapping-${mapping.labelNorm}-${index}`}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`${ptBr.optionsLearningSelectLabel} ${mapping.labelNorm}`}
-                          checked={selectedRecords.includes(selectionId("mapping", index))}
-                          onChange={(event) =>
-                            toggleSelection(
-                              selectionId("mapping", index),
-                              event.currentTarget.checked,
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          aria-label={`${ptBr.optionsLearningEditLabel} ${mapping.labelNorm}`}
-                          value={mapping.labelNorm}
-                          onInput={(event) =>
-                            updateMapping(index, {
-                              labelNorm: (event.currentTarget as HTMLInputElement).value,
-                            })
-                          }
-                        />
-                      </td>
-                      <td>
-                        <select
-                          aria-label={`${ptBr.optionsLearningEditField} ${mapping.labelNorm}`}
-                          value={mapping.fieldKey}
-                          onChange={(event) =>
-                            updateMapping(index, {
-                              fieldKey: (event.currentTarget as HTMLSelectElement)
-                                .value as FieldKey,
-                            })
-                          }
-                        >
-                          {FIELD_KEYS.filter((fieldKey) => !isSensitiveFieldBlocked(fieldKey)).map(
-                            (fieldKey) => (
+              <div className="options-learning-table-wrap">
+                <table className="options-learning-table">
+                  <thead>
+                    <tr>
+                      <th aria-hidden="true"></th>
+                      <th>{ptBr.optionsLearningLabel}</th>
+                      <th>{ptBr.optionsLearningField}</th>
+                      <th>{ptBr.optionsLearningStatus}</th>
+                      <th>{ptBr.optionsLearningHost}</th>
+                      <th>{ptBr.optionsLearningActions}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {learning.mappings.map((mapping, index) => (
+                      <tr key={`mapping-${mapping.labelNorm}-${index}`}>
+                        <td className="options-learning-select-cell">
+                          <input
+                            type="checkbox"
+                            aria-label={`${ptBr.optionsLearningSelectLabel} ${mapping.labelNorm}`}
+                            checked={selectedRecords.includes(selectionId("mapping", index))}
+                            onChange={(event) =>
+                              toggleSelection(
+                                selectionId("mapping", index),
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${ptBr.optionsLearningEditLabel} ${mapping.labelNorm}`}
+                            value={mapping.labelNorm}
+                            onInput={(event) =>
+                              updateMapping(index, {
+                                labelNorm: (event.currentTarget as HTMLInputElement).value,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <select
+                            aria-label={`${ptBr.optionsLearningEditField} ${mapping.labelNorm}`}
+                            value={mapping.fieldKey}
+                            onChange={(event) =>
+                              updateMapping(index, {
+                                fieldKey: (event.currentTarget as HTMLSelectElement)
+                                  .value as FieldKey,
+                              })
+                            }
+                          >
+                            {FIELD_KEYS.filter(
+                              (fieldKey) => !isSensitiveFieldBlocked(fieldKey),
+                            ).map((fieldKey) => (
                               <option key={fieldKey} value={fieldKey}>
                                 {ptBr.optionsFieldLabels[fieldKey]}
                               </option>
-                            ),
-                          )}
-                        </select>
-                      </td>
-                      <td>
-                        {mapping.reviewed
-                          ? ptBr.optionsLearningReviewed
-                          : ptBr.optionsLearningPending}
-                      </td>
-                      <td>{mapping.host ?? ""}</td>
-                      <td>
-                        <button type="button" onClick={() => void approveMapping(index)}>
-                          {ptBr.optionsLearningApprove}
-                        </button>
-                        <button type="button" onClick={() => void deleteMapping(index)}>
-                          {ptBr.optionsLearningDelete}
-                        </button>
-                        <button type="button" onClick={() => void ignoreLabel(mapping.labelNorm)}>
-                          {ptBr.optionsLearningIgnoreLabel}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          {mapping.reviewed
+                            ? ptBr.optionsLearningReviewed
+                            : ptBr.optionsLearningPending}
+                        </td>
+                        <td>{mapping.host ?? ""}</td>
+                        <td>
+                          <div className="options-learning-actions">
+                            <button
+                              className="options-learning-approve"
+                              type="button"
+                              onClick={() => void approveMapping(index)}
+                            >
+                              {ptBr.optionsLearningApprove}
+                            </button>
+                            <button
+                              className="options-learning-delete"
+                              type="button"
+                              onClick={() => void deleteMapping(index)}
+                            >
+                              {ptBr.optionsLearningDelete}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
           {learning.answers.length > 0 ? (
-            <section>
+            <section className="options-card">
               <h3>{ptBr.optionsLearningAnswers}</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>{ptBr.optionsLearningSelectLabel}</th>
-                    <th>{ptBr.optionsLearningLabel}</th>
-                    <th>{ptBr.optionsLearningAnswer}</th>
-                    <th>{ptBr.optionsLearningStatus}</th>
-                    <th>{ptBr.optionsLearningHost}</th>
-                    <th>{ptBr.optionsLearningActions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {learning.answers.map((answer, index) => (
-                    <tr key={`answer-${answer.labelNorm}-${index}`}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`${ptBr.optionsLearningSelectLabel} ${answer.labelNorm}`}
-                          checked={selectedRecords.includes(selectionId("answer", index))}
-                          onChange={(event) =>
-                            toggleSelection(
-                              selectionId("answer", index),
-                              event.currentTarget.checked,
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          aria-label={`${ptBr.optionsLearningEditLabel} ${answer.labelNorm}`}
-                          value={answer.labelNorm}
-                          onInput={(event) =>
-                            updateAnswer(index, {
-                              labelNorm: (event.currentTarget as HTMLInputElement).value,
-                            })
-                          }
-                        />
-                      </td>
-                      <td>
-                        <textarea
-                          aria-label={`${ptBr.optionsLearningEditAnswer} ${answer.labelNorm}`}
-                          value={answer.answer}
-                          onInput={(event) =>
-                            updateAnswer(index, {
-                              answer: (event.currentTarget as HTMLTextAreaElement).value,
-                            })
-                          }
-                        />
-                      </td>
-                      <td>
-                        {answer.reviewed
-                          ? ptBr.optionsLearningReviewed
-                          : ptBr.optionsLearningPending}
-                      </td>
-                      <td>{answer.host}</td>
-                      <td>
-                        <button type="button" onClick={() => void approveAnswer(index)}>
-                          {ptBr.optionsLearningApprove}
-                        </button>
-                        <button type="button" onClick={() => void deleteAnswer(index)}>
-                          {ptBr.optionsLearningDelete}
-                        </button>
-                        <button type="button" onClick={() => void ignoreLabel(answer.labelNorm)}>
-                          {ptBr.optionsLearningIgnoreLabel}
-                        </button>
-                      </td>
+              <div className="options-learning-table-wrap">
+                <table className="options-learning-table">
+                  <thead>
+                    <tr>
+                      <th aria-hidden="true"></th>
+                      <th>{ptBr.optionsLearningLabel}</th>
+                      <th>{ptBr.optionsLearningAnswer}</th>
+                      <th>{ptBr.optionsLearningStatus}</th>
+                      <th>{ptBr.optionsLearningHost}</th>
+                      <th>{ptBr.optionsLearningActions}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {learning.answers.map((answer, index) => (
+                      <tr key={`answer-${answer.labelNorm}-${index}`}>
+                        <td className="options-learning-select-cell">
+                          <input
+                            type="checkbox"
+                            aria-label={`${ptBr.optionsLearningSelectLabel} ${answer.labelNorm}`}
+                            checked={selectedRecords.includes(selectionId("answer", index))}
+                            onChange={(event) =>
+                              toggleSelection(
+                                selectionId("answer", index),
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`${ptBr.optionsLearningEditLabel} ${answer.labelNorm}`}
+                            value={answer.labelNorm}
+                            onInput={(event) =>
+                              updateAnswer(index, {
+                                labelNorm: (event.currentTarget as HTMLInputElement).value,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <textarea
+                            aria-label={`${ptBr.optionsLearningEditAnswer} ${answer.labelNorm}`}
+                            value={answer.answer}
+                            onInput={(event) =>
+                              updateAnswer(index, {
+                                answer: (event.currentTarget as HTMLTextAreaElement).value,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          {answer.reviewed
+                            ? ptBr.optionsLearningReviewed
+                            : ptBr.optionsLearningPending}
+                        </td>
+                        <td>{answer.host}</td>
+                        <td>
+                          <div className="options-learning-actions">
+                            <button
+                              className="options-learning-approve"
+                              type="button"
+                              onClick={() => void approveAnswer(index)}
+                            >
+                              {ptBr.optionsLearningApprove}
+                            </button>
+                            <button
+                              className="options-learning-delete"
+                              type="button"
+                              onClick={() => void deleteAnswer(index)}
+                            >
+                              {ptBr.optionsLearningDelete}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
           {learning.mappings.length + learning.answers.length > 0 ? (
@@ -1104,7 +1189,7 @@ export function OptionsApp() {
             </button>
           ) : null}
           {learning.conflicts.length > 0 ? (
-            <section>
+            <section className="options-card">
               <h3>{ptBr.optionsLearningConflicts}</h3>
               {learning.conflicts.map((conflict, index) => (
                 <article key={`${conflict.fieldKey}-${conflict.host}-${conflict.createdAt}`}>
@@ -1130,7 +1215,7 @@ export function OptionsApp() {
       ) : null}
 
       {activeTab === "data" ? (
-        <section>
+        <section className="options-card">
           <h2>{ptBr.optionsDataTitle}</h2>
           <p>{ptBr.optionsDataHint}</p>
           <button type="button" disabled={!storageReady} onClick={handleExport}>
@@ -1153,13 +1238,34 @@ export function OptionsApp() {
               onChange={(event) => void handleImport(event)}
             />
           </label>
-          <button type="button" disabled={!storageReady} onClick={() => void handleDeleteAll()}>
+          <button
+            className="options-danger"
+            type="button"
+            disabled={!storageReady}
+            onClick={() => void handleDeleteAll()}
+          >
             {ptBr.optionsDataDelete}
           </button>
         </section>
       ) : null}
 
-      {statusMessage ? <p aria-live="polite">{statusMessage}</p> : null}
+      {toast ? (
+        <div
+          className={`options-toast options-toast-${toast.tone}`}
+          role={toast.tone === "error" ? "alert" : "status"}
+          aria-live={toast.tone === "error" ? "assertive" : "polite"}
+        >
+          <span>{toast.message}</span>
+          <button
+            className="options-toast-close"
+            type="button"
+            aria-label={ptBr.optionsToastClose}
+            onClick={() => setToast(null)}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }

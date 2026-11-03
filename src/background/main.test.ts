@@ -374,6 +374,68 @@ describe("R-01/R-17 background action", () => {
     });
   });
 
+  it("combines first and last names when a form requests the full name", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: {
+          fullName: "Nome antigo",
+          firstName: "Ana",
+          lastName: "Exemplo",
+        },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "GET_FILL_VALUES",
+        fieldKeys: ["fullName"],
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 17 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({
+        values: { fullName: "Ana Exemplo" },
+      });
+    });
+  });
+
+  it("does not suggest a full name when only a first name is available", async () => {
+    const chrome = new FakeBackgroundChrome();
+    const storage = new FakeStorage();
+    await storage.setItem("profile:v1", {
+      schemaVersion: 1,
+      value: {
+        values: { firstName: "Ana" },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    registerBackground(chrome, storage);
+    const sendResponse = vi.fn();
+
+    chrome.sendMessage(
+      {
+        type: "GET_FILL_VALUES",
+        fieldKeys: ["fullName"],
+        host: "example.org",
+      },
+      { id: chrome.runtime.id, tab: { id: 17 } },
+      sendResponse,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ values: {} });
+    });
+  });
+
   it("persists an unreviewed mapping from a unique profile value", async () => {
     const chrome = new FakeBackgroundChrome();
     const storage = new FakeStorage();
