@@ -85,10 +85,23 @@ const PROFILE_FIELDS: FieldKey[] = [
   "githubUrl",
   "portfolioUrl",
   "salaryExpectation",
+  "availability",
+  "noticePeriod",
+  "workModel",
+  "englishLevel",
   "currentRole",
   "currentCompany",
   "yearsExperience",
 ];
+const PROFILE_AUTOCOMPLETE: Partial<Record<FieldKey, string>> = {
+  firstName: "given-name",
+  lastName: "family-name",
+  email: "email",
+  phone: "tel",
+  city: "address-level2",
+  state: "address-level1",
+  country: "country-name",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -434,13 +447,21 @@ export function OptionsApp() {
       setStatusMessage(ptBr.optionsStorageError);
       return;
     }
-    const savedProfile = normalizeProfile(profile.values);
+    const formValues = { ...profile.values };
+    for (const input of document.querySelectorAll<HTMLInputElement>("[data-profile-field]")) {
+      const field = input.dataset.profileField;
+      if (isFieldKey(field)) {
+        formValues[field] = input.value;
+      }
+    }
+    const savedProfile = normalizeProfile(formValues);
     const savedSettings = normalizeSettings(settings);
     try {
       await writeStorageItems({
         [PROFILE_STORAGE_KEY]: { schemaVersion: 1, value: savedProfile },
         [SETTINGS_STORAGE_KEY]: { schemaVersion: 1, value: savedSettings },
       });
+      setProfile(savedProfile);
       setStatusMessage(ptBr.optionsProfileSaved);
     } catch {
       setStatusMessage(ptBr.optionsStorageError);
@@ -866,8 +887,15 @@ export function OptionsApp() {
                   {ptBr.optionsFieldLabels[field]}
                   <input
                     type="text"
+                    aria-label={ptBr.optionsFieldLabels[field]}
+                    autoComplete={PROFILE_AUTOCOMPLETE[field] ?? "off"}
+                    data-profile-field={field}
                     value={profile.values[field] ?? ""}
                     onInput={(event) => {
+                      const target = event.currentTarget as HTMLInputElement;
+                      updateProfileValue(field, target.value);
+                    }}
+                    onChange={(event) => {
                       const target = event.currentTarget as HTMLInputElement;
                       updateProfileValue(field, target.value);
                     }}

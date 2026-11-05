@@ -60,6 +60,55 @@ function hasValidUpdatedAt(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function cleanMarkdownText(value: string): string {
+  return value
+    .trim()
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^(?:[-*+]\s+|>\s*)/, "")
+    .replace(/\\\s*$/, "")
+    .replace(/^\*\*(.*)\*\*$/, "$1")
+    .replace(/^__(.*)__$/, "$1")
+    .replace(/^[*_`~]+/, "")
+    .trim();
+}
+
+function cleanNamePart(value: string): string {
+  return value.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").trim();
+}
+
+function parseLocation(value: string): Partial<Record<FieldKey, string>> {
+  const parts = value.split(",").map((part) => cleanMarkdownText(part));
+  if (parts.length < 2) {
+    return {};
+  }
+
+  const location: Partial<Record<FieldKey, string>> = {};
+  if (parts[0]) {
+    location.city = parts[0];
+  }
+  if (parts[1]) {
+    location.state = parts[1];
+  }
+  if (parts.length > 2) {
+    location.country = parts.slice(2).join(", ");
+  }
+  return location;
+}
+
+function parseRecentExperience(value: string): Partial<Record<FieldKey, string>> {
+  const match = value.match(/^(.+?)\s+(?:na|no|em|at)\s+([^,.;]+)(?:[,.;]|$)/i);
+  if (!match || !match[1] || !match[2]) {
+    return {};
+  }
+
+  const role = cleanMarkdownText(match[1]);
+  const company = cleanMarkdownText(match[2]);
+  return {
+    ...(role.length > 0 ? { currentRole: role } : {}),
+    ...(company.length > 0 ? { currentCompany: company } : {}),
+  };
+}
+
 export function validateProfile(input: unknown): Profile {
   const fallbackProfile: Profile = { values: {}, updatedAt: new Date().toISOString() };
 
@@ -104,7 +153,7 @@ export function parseProfileText(raw: string): Profile {
 
   const values: Partial<Record<FieldKey, string>> = {};
   const fieldAliases: Record<FieldKey, readonly string[]> = {
-    fullName: ["nome completo", "full name"],
+    fullName: ["nome completo", "nome profissional", "full name"],
     firstName: ["nome", "first name", "given name"],
     lastName: ["sobrenome", "last name", "family name"],
     email: ["email", "e-mail", "mail"],
@@ -115,11 +164,16 @@ export function parseProfileText(raw: string): Profile {
     linkedinUrl: ["linkedin", "linkedin url", "linkedin profile"],
     githubUrl: ["github", "github url", "github profile"],
     portfolioUrl: ["portfolio", "portifolio", "site", "website", "portfolio url"],
-    salaryExpectation: ["pretensao salarial", "salario pretendido", "desired salary", "salary expectation"],
+    salaryExpectation: [
+      "pretensao salarial",
+      "salario pretendido",
+      "desired salary",
+      "salary expectation",
+    ],
     availability: ["disponibilidade", "availability"],
     noticePeriod: ["prazo de aviso", "notice period"],
     workModel: ["modelo de trabalho", "work model"],
-    englishLevel: ["ingles", "english level"],
+    englishLevel: ["ingles", "nivel de ingles", "english level"],
     currentCompany: [
       "empresa atual",
       "ultima empresa",
@@ -128,7 +182,7 @@ export function parseProfileText(raw: string): Profile {
       "last company",
     ],
     currentRole: ["cargo atual", "cargo", "current role"],
-    yearsExperience: ["anos de experiencia", "years experience"],
+    yearsExperience: ["anos de experiencia", "tempo de experiencia informado", "years experience"],
     cpf: ["cpf"],
     rg: ["rg"],
     birthDate: ["data de nascimento", "birth date", "nascimento"],
@@ -138,16 +192,16 @@ export function parseProfileText(raw: string): Profile {
     race: ["raca", "race"],
     pcd: ["pcd", "deficiencia", "disabled"],
   };
+  const locationAliases = ["localizacao profissional", "professional location"];
+  const recentExperienceAliases = ["experiencia mais recente", "most recent experience"];
 
   function detectFieldKey(key: string): FieldKey | undefined {
     const normalizedKey = normalizeLabel(key);
-    for (const [fieldKey, aliases] of Object.entries(fieldAliases) as [FieldKey, readonly string[]][]) {
-      if (
-        aliases.some((alias) => {
-          const normalizedAlias = normalizeLabel(alias);
-          return normalizedAlias === normalizedKey || normalizedKey.includes(normalizedAlias);
-        })
-      ) {
+    for (const [fieldKey, aliases] of Object.entries(fieldAliases) as [
+      FieldKey,
+      readonly string[],
+    ][]) {
+      if (aliases.some((alias) => normalizeLabel(alias) === normalizedKey)) {
         return fieldKey;
       }
     }
@@ -156,50 +210,50 @@ export function parseProfileText(raw: string): Profile {
 
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed.length === 0) {
+    const separatorIndex = trimmed.search(/[:=]/);
+    if (trimmed.length === 0 || separatorIndex <= 0) {
       continue;
     }
 
-    const separatorIndex = trimmed.search(/\s*[:=-]\s*/);
-    if (separatorIndex <= 0) {
+    const label = cleanMarkdownText(trimmed.slice(0, separatorIndex)).replace(/[*_`~]/g, "");
+    const value = cleanMarkdownText(trimmed.slice(separatorIndex + 1));
+    const normalizedLabel = normalizeLabel(label);
+
+    if (locationAliases.some((alias) => normalizeLabel(alias) === normalizedLabel)) {
+      Object.assign(values, parseLocation(value));
       continue;
     }
 
-    const label = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + trimmed.slice(separatorIndex).match(/\s*[:=-]\s*/)![0].length).trim();
+    if (recentExperienceAliases.some((alias) => normalizeLabel(alias) === normalizedLabel)) {
+      Object.assign(values, parseRecentExperience(value));
+      continue;
+    }
+
     const fieldKey = detectFieldKey(label);
-    if (fieldKey && value.length > 0) {
-      values[fieldKey] = value;
+    if (!fieldKey || value.length === 0) {
+      continue;
     }
-  }
 
-  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi);
-  if (emailMatch && values.email === undefined) {
-    values.email = emailMatch[0];
-  }
+    if (fieldKey === "fullName") {
+      const nameParts = value.split(/\s+/).map(cleanNamePart).filter(Boolean);
+      if (nameParts[0]) {
+        values.firstName = nameParts[0];
+      }
+      if (nameParts.length > 1) {
+        values.lastName = nameParts.slice(1).join(" ");
+      }
+      continue;
+    }
 
-  const linkedInMatch = raw.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s]+/gi);
-  if (linkedInMatch && values.linkedinUrl === undefined) {
-    values.linkedinUrl = linkedInMatch[0];
-  }
+    if (fieldKey === "firstName") {
+      const firstName = cleanNamePart(value.split(/\s+/)[0] ?? "");
+      if (firstName.length > 0) {
+        values.firstName = firstName;
+      }
+      continue;
+    }
 
-  const githubMatch = raw.match(/https?:\/\/(?:www\.)?github\.com\/[^\s]+/gi);
-  if (githubMatch && values.githubUrl === undefined) {
-    values.githubUrl = githubMatch[0];
-  }
-
-  const phoneMatch = raw.match(/(?:\+?\d[\d\s().-]{7,}\d)/g);
-  if (phoneMatch && values.phone === undefined) {
-    values.phone = phoneMatch[0].replace(/\s+/g, " ").trim();
-  }
-
-  const firstMeaningfulLine = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0 && !/^(e-mail|email|telefone|phone|linkedin|github|nome|full name|city|cidade)/i.test(line));
-
-  if (firstMeaningfulLine && values.fullName === undefined && !/[:=-]/.test(firstMeaningfulLine)) {
-    values.fullName = firstMeaningfulLine;
+    values[fieldKey] = value;
   }
 
   return validateProfile({ values, updatedAt: new Date().toISOString() });
@@ -222,10 +276,7 @@ export function redactSensitive(value: string): string {
   const input = String(value ?? "");
   let redacted = input;
 
-  redacted = redacted.replace(
-    /(?:[A-Z0-9._%+-]+)@(?:[A-Z0-9.-]+\.[A-Z]{2,})/gi,
-    "[REDACTED]",
-  );
+  redacted = redacted.replace(/(?:[A-Z0-9._%+-]+)@(?:[A-Z0-9.-]+\.[A-Z]{2,})/gi, "[REDACTED]");
 
   redacted = redacted.replace(
     /(?:https?:\/\/|www\.)?(?:[a-z0-9.-]*\.)?(?:linkedin\.com|github\.com)\/[^\s)\]>'\"]+/gi,
@@ -237,10 +288,7 @@ export function redactSensitive(value: string): string {
     "[REDACTED]",
   );
 
-  redacted = redacted.replace(
-    /\b\d{2}\.\d{3}\.\d{3}[-.]?\d{1,2}\b/g,
-    "[REDACTED]",
-  );
+  redacted = redacted.replace(/\b\d{2}\.\d{3}\.\d{3}[-.]?\d{1,2}\b/g, "[REDACTED]");
 
   redacted = redacted.replace(
     /(?:\+?\d{1,3}[\s().-]?)?(?:\(?\d{2,3}\)?[\s().-]?){2,3}\d{2,5}/g,

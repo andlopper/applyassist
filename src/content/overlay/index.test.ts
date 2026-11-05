@@ -49,13 +49,62 @@ class FakeAiGenerator {
 }
 
 class FakeCancelableAiGenerator {
-  readonly generate: AiGenerator = async (_command, signal, onChunk) => {
+  readonly requests: AiGenerationCommand[] = [];
+
+  readonly generate: AiGenerator = async (command, signal, onChunk) => {
+    this.requests.push(command);
     onChunk("Resposta parcial");
     await new Promise<void>((resolve) => {
       signal.addEventListener("abort", () => resolve(), { once: true });
     });
     throw new DOMException("The operation was aborted.", "AbortError");
   };
+}
+
+class FakeUnresponsiveAiGenerator {
+  private resolveGeneration: (() => void) | undefined;
+  private resolveStarted: (() => void) | undefined;
+  readonly started = new Promise<void>((resolve) => {
+    this.resolveStarted = resolve;
+  });
+
+  readonly generate: AiGenerator = async (_command, _signal, onChunk) => {
+    onChunk("Resposta parcial");
+    this.resolveStarted?.();
+    await new Promise<void>((resolve) => {
+      this.resolveGeneration = resolve;
+    });
+  };
+
+  complete(): void {
+    this.resolveGeneration?.();
+  }
+}
+
+class FakeStreamingCancelableAiGenerator {
+  private onChunk: ((text: string) => void) | undefined;
+  private resolveGeneration: (() => void) | undefined;
+  private resolveStarted: (() => void) | undefined;
+  readonly started = new Promise<void>((resolve) => {
+    this.resolveStarted = resolve;
+  });
+
+  readonly generate: AiGenerator = async (_command, signal, onChunk) => {
+    this.onChunk = onChunk;
+    onChunk("Parte 1");
+    this.resolveStarted?.();
+    await new Promise<void>((resolve) => {
+      this.resolveGeneration = resolve;
+      signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    if (signal.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+  };
+
+  emit(chunk: string): void {
+    this.onChunk?.(chunk);
+  }
 }
 
 function addField(labelText: string, type = "text"): HTMLInputElement {
@@ -89,9 +138,78 @@ describe("content overlay", () => {
     expect(root?.textContent).toContain("Prontos: 1");
     expect(root?.textContent).toContain("Abertas: 1");
     expect(root?.textContent).toContain("Bloqueados: 1");
-    expect(root?.textContent).toContain("Preencher prontos");
+    expect(root?.textContent).toContain("Preencher tudo");
+    expect(root?.textContent).toContain("Gerar tudo");
     expect(root?.textContent).toContain("Desfazer");
     expect(root?.textContent).toContain("Aplicar");
+    const actionGroups = root?.querySelectorAll(".actions .action-group");
+    expect(
+      Array.from(actionGroups?.[0]?.querySelectorAll("button") ?? []).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Gerar tudo", "Cancelar"]);
+    expect(
+      Array.from(actionGroups?.[1]?.querySelectorAll("button") ?? []).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Preencher tudo", "Desfazer"]);
+    expect(root?.querySelector('[data-action="generate-all"] .loading-spinner')).toBeNull();
+
+    overlay.dispose();
+  });
+
+  it("shows a spinner and a generating label while a single answer is loading", async () => {
+    document.body.replaceChildren();
+    addField("Describe your strengths");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeUnresponsiveAiGenerator();
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+    await generator.started;
+
+    const generatingButton = root?.querySelector<HTMLButtonElement>(
+      '[data-action="generate"]',
+    );
+    expect(generatingButton?.disabled).toBe(true);
+    expect(generatingButton?.textContent).toContain(ptBr.overlayAiGenerating);
+    expect(generatingButton?.querySelector(".loading-spinner")).not.toBeNull();
+    expect(generatingButton?.getAttribute("aria-label")).toBe(ptBr.overlayAiGenerating);
+
+    root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai-field"]')?.click();
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiCancelled);
+    });
+    expect(root?.querySelector(".suggestion")?.textContent).toBe(ptBr.overlayNoSuggestion);
+
+    generator.complete();
+    overlay.dispose();
+  });
+
+  it("keeps the active cancel button stable while streamed text updates", async () => {
+    document.body.replaceChildren();
+    addField("Describe your strengths");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeStreamingCancelableAiGenerator();
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+    await generator.started;
+    const cancelButton = root?.querySelector<HTMLButtonElement>(
+      '[data-action="cancel-ai-field"]',
+    );
+    generator.emit("Parte 2");
+
+    expect(root?.querySelector(".suggestion")?.textContent).toBe("Parte 1Parte 2");
+    expect(root?.querySelector('[data-action="cancel-ai-field"]')).toBe(cancelButton);
+    cancelButton?.click();
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiCancelled);
+    });
 
     overlay.dispose();
   });
@@ -129,10 +247,11 @@ describe("content overlay", () => {
     overlay.dispose();
   });
 
-  it("streams a user-requested answer into the field and allows undo", async () => {
+  it("shows a generated answer for review and applies it only after explicit approval", async () => {
     document.body.replaceChildren();
     const input = addField("Conte sobre sua experiência");
-    input.value = "Resposta anterior";
+    const inputEvent = vi.fn();
+    input.addEventListener("input", inputEvent);
     const selectedText = document.createTextNode("Descrição selecionada pelo usuário.");
     document.body.append(selectedText);
     const range = document.createRange();
@@ -148,8 +267,13 @@ describe("content overlay", () => {
     root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
 
     await vi.waitFor(() => {
-      expect(input.value).toBe("Experiência profissional.");
+      expect(root?.querySelector(".suggestion")?.textContent).toBe("Experiência profissional.");
     });
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiGenerated);
+    });
+    expect(input.value).toBe("");
+    expect(inputEvent).not.toHaveBeenCalled();
     expect(generator.requests).toEqual([
       {
         type: "AI_GENERATE",
@@ -159,9 +283,22 @@ describe("content overlay", () => {
       },
     ]);
     expect(root?.textContent).toContain(ptBr.overlayAiGenerated);
+    const fieldActions = root?.querySelector(".field-actions");
+    expect(
+      Array.from(fieldActions?.querySelectorAll("button") ?? []).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Gerar", "Aplicar"]);
+    expect(root?.querySelector("style")?.textContent).toContain(
+      ".field-actions { display: flex; flex-wrap: wrap; gap: 8px; }",
+    );
 
-    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
-    expect(input.value).toBe("Resposta anterior");
+    root?.querySelector<HTMLButtonElement>('[data-action="apply-generated"]')?.click();
+    expect(input.value).toBe("Experiência profissional.");
+    expect(inputEvent).toHaveBeenCalledOnce();
+
+    root?.querySelector<HTMLButtonElement>('[data-action="undo-field"]')?.click();
+    expect(input.value).toBe("");
 
     overlay.dispose();
   });
@@ -209,7 +346,7 @@ describe("content overlay", () => {
     overlay.dispose();
   });
 
-  it("cancels a streaming response and keeps partial text undoable", async () => {
+  it("discards a cancelled partial response and restores the initial field state", async () => {
     document.body.replaceChildren();
     const input = addField("Conte sobre sua experiência");
     const runtime = new FakeOverlayRuntime({ values: {} });
@@ -220,14 +357,20 @@ describe("content overlay", () => {
     const root = document.getElementById("applyassist-overlay")?.shadowRoot;
     root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
     await vi.waitFor(() => {
-      expect(input.value).toBe("Resposta parcial");
+      expect(root?.querySelector(".suggestion")?.textContent).toBe("Resposta parcial");
     });
-    root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.click();
+    expect(input.value).toBe("");
+    expect(root?.querySelector('[data-action="apply-generated"]')).toBeNull();
+    expect(root?.querySelector('[data-action="cancel-ai-field"]')).not.toBeNull();
+    expect(root?.querySelector('[data-action="apply-generated"]')).toBeNull();
+    root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai-field"]')?.click();
     await vi.waitFor(() => {
       expect(root?.querySelector('[role="status"]')?.textContent).toBe(ptBr.overlayAiCancelled);
     });
 
-    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
+    expect(root?.querySelector(".suggestion")?.textContent).toBe(ptBr.overlayNoSuggestion);
+    expect(root?.querySelector('[data-action="apply-generated"]')).toBeNull();
+    expect(root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.disabled).toBe(true);
     expect(input.value).toBe("");
     overlay.dispose();
   });
@@ -275,10 +418,20 @@ describe("content overlay", () => {
 
     expect(input.value).toBe("Ana Exemplo");
     expect(pageClick).not.toHaveBeenCalled();
+    expect(
+      document
+        .getElementById("applyassist-overlay")
+        ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.disabled,
+    ).toBe(true);
+    expect(
+      document
+        .getElementById("applyassist-overlay")
+        ?.shadowRoot?.querySelector('[data-action="undo-field"]'),
+    ).not.toBeNull();
 
     document
       .getElementById("applyassist-overlay")
-      ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="undo"]')
+      ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="undo-field"]')
       ?.click();
 
     expect(input.value).toBe("");
@@ -288,10 +441,11 @@ describe("content overlay", () => {
   it("fills only ready empty fields when the batch action is used", async () => {
     document.body.replaceChildren();
     const emptyInput = addField("Pretensão salarial");
+    const anotherEmptyInput = addField("E-mail", "email");
     const filledInput = addField("Cidade");
     filledInput.value = "Valor existente";
     const runtime = new FakeOverlayRuntime({
-      values: { salaryExpectation: "R$ 10.000", city: "Recife" },
+      values: { salaryExpectation: "R$ 10.000", email: "ana@example.test", city: "Recife" },
     });
     const overlay = mountOverlay(document, runtime.sendMessage);
 
@@ -302,7 +456,186 @@ describe("content overlay", () => {
       ?.click();
 
     expect(emptyInput.value).toBe("R$ 10.000");
+    expect(anotherEmptyInput.value).toBe("ana@example.test");
     expect(filledInput.value).toBe("Valor existente");
+    expect(
+      document
+        .getElementById("applyassist-overlay")
+        ?.shadowRoot?.querySelector('[data-action="undo"]'),
+    ).not.toBeNull();
+
+    document
+      .getElementById("applyassist-overlay")
+      ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="undo"]')
+      ?.click();
+    expect(emptyInput.value).toBe("");
+    expect(anotherEmptyInput.value).toBe("");
+    expect(filledInput.value).toBe("Valor existente");
+
+    overlay.dispose();
+  });
+
+  it("fills completed AI answers together with ready suggestions and undoes the whole batch", async () => {
+    document.body.replaceChildren();
+    const suggestedField = addField("E-mail", "email");
+    const aiField = addField("Describe your strengths");
+    const runtime = new FakeOverlayRuntime({ values: { email: "ana@example.test" } });
+    const generator = new FakeAiGenerator(["Resposta revisável."]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[data-action="apply-generated"]')).not.toBeNull();
+    });
+
+    root?.querySelector<HTMLButtonElement>('[data-action="apply-ready"]')?.click();
+    expect(suggestedField.value).toBe("ana@example.test");
+    expect(aiField.value).toBe("Resposta revisável.");
+    expect(root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.disabled).toBe(false);
+
+    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
+    expect(suggestedField.value).toBe("");
+    expect(aiField.value).toBe("");
+    expect(root?.querySelectorAll(".suggestion").item(1)?.textContent).toBe(
+      ptBr.overlayNoSuggestion,
+    );
+    expect(root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.disabled).toBe(true);
+
+    overlay.dispose();
+  });
+
+  it("keeps batch actions in a fixed, aligned footer", async () => {
+    document.body.replaceChildren();
+    addField("Describe your strengths");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator(["Resposta revisável."]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    const actions = root?.querySelector(".actions");
+    const footer = root?.querySelector(".footer");
+    const content = root?.querySelector(".content");
+    const actionGroups = root?.querySelectorAll(".actions .action-group");
+    const style = root?.querySelector("style")?.textContent ?? "";
+
+    expect(actions?.parentElement?.classList.contains("footer")).toBe(true);
+    expect(root?.querySelector(".panel")?.firstElementChild?.classList.contains("heading")).toBe(
+      true,
+    );
+    expect(root?.querySelector(".heading")?.contains(root?.querySelector('[data-action="close"]') ?? null)).toBe(
+      true,
+    );
+    expect(footer?.contains(root?.querySelector("h2") ?? null)).toBe(false);
+    expect(content?.contains(root?.querySelector(".counts") ?? null)).toBe(true);
+    expect(content?.contains(root?.querySelector(".fields") ?? null)).toBe(true);
+    expect(content?.previousElementSibling?.classList.contains("heading")).toBe(true);
+    expect(style).toContain("height: min(50vh, 500px)");
+    expect(style).toContain(".content { flex: 1 1 auto;");
+    expect(style).toContain(".actions { display: grid; gap: 8px; grid-template-columns: 1fr; }");
+    expect(style).toContain(".loading-spinner { animation: applyassist-spin .8s linear infinite;");
+    expect(style).toContain("align-items: center; display: inline-flex; gap: 8px;");
+    expect(style).toContain("overflow-y: auto");
+    expect(style).toContain(".actions button { min-height: 40px;");
+    expect(style).toContain("white-space: nowrap; width: 100%;");
+    expect(style).toContain(".field-actions { display: flex; flex-wrap: wrap; gap: 8px; }");
+    const fieldActions = root?.querySelector(".field-actions");
+    expect(fieldActions?.querySelector('[data-action="generate"]')?.textContent).toBe("Gerar");
+    expect(root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.disabled).toBe(
+      true,
+    );
+    expect(root?.querySelector('[data-action="generate-all"]')?.textContent).toBe("Gerar tudo");
+    expect(root?.querySelector('[data-action="apply-ready"]')?.textContent).toBe("Preencher tudo");
+
+    root?.querySelector<HTMLButtonElement>('[data-action="generate-all"]')?.click();
+    expect(root?.querySelector('[data-action="generate-all"]')?.textContent).toContain(
+      ptBr.overlayAiGenerating,
+    );
+    await vi.waitFor(() => {
+      expect(root?.querySelector('[data-action="apply-generated"]')).not.toBeNull();
+    });
+    expect(
+      Array.from(actionGroups?.[0]?.querySelectorAll("button") ?? []).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Gerar tudo", "Cancelar"]);
+    expect(
+      Array.from(actionGroups?.[1]?.querySelectorAll("button") ?? []).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Preencher tudo", "Desfazer"]);
+
+    overlay.dispose();
+  });
+
+  it("generates answers for all empty open fields without filling them", async () => {
+    document.body.replaceChildren();
+    const first = addField("Why are you interested?");
+    const second = addField("Describe your strengths");
+    const alreadyFilled = addField("What motivates you?");
+    alreadyFilled.value = "Existing answer";
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeAiGenerator(["Resposta revisável."]);
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate-all"]')?.click();
+    await vi.waitFor(() => {
+      expect(generator.requests).toHaveLength(2);
+      expect(root?.querySelectorAll('[data-action="apply-generated"]')).toHaveLength(2);
+    });
+
+    expect(first.value).toBe("");
+    expect(second.value).toBe("");
+    expect(alreadyFilled.value).toBe("Existing answer");
+    expect(root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.disabled).toBe(
+      true,
+    );
+
+    root?.querySelector<HTMLButtonElement>('[data-action="apply-generated"]')?.click();
+    root?.querySelector<HTMLButtonElement>('[data-action="apply-generated"]')?.click();
+    expect(first.value).toBe("Resposta revisável.");
+    expect(second.value).toBe("Resposta revisável.");
+    expect(root?.querySelectorAll('[data-action="undo-field"]')).toHaveLength(2);
+    expect(root?.querySelector('[data-action="undo"]')?.hasAttribute("disabled")).toBe(true);
+
+    overlay.dispose();
+  });
+
+  it("cancels generate-all before it starts generating the next field", async () => {
+    document.body.replaceChildren();
+    const first = addField("Why are you interested?");
+    const second = addField("Describe your strengths");
+    const runtime = new FakeOverlayRuntime({ values: {} });
+    const generator = new FakeCancelableAiGenerator();
+    const overlay = mountOverlay(document, runtime.sendMessage, undefined, generator.generate);
+
+    await overlay.refresh();
+    const root = document.getElementById("applyassist-overlay")?.shadowRoot;
+    root?.querySelector<HTMLButtonElement>('[data-action="generate-all"]')?.click();
+    await vi.waitFor(() => {
+      expect(root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.disabled).toBe(
+        false,
+      );
+    });
+    expect(root?.querySelector(".suggestion")?.textContent).toBe("Resposta parcial");
+    root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.click();
+
+    await vi.waitFor(() => {
+      expect(root?.querySelector<HTMLButtonElement>('[data-action="cancel-ai"]')?.disabled).toBe(
+        true,
+      );
+    });
+    expect(root?.querySelectorAll(".suggestion").item(0)?.textContent).toBe(
+      ptBr.overlayNoSuggestion,
+    );
+    expect(root?.querySelector('[data-action="apply-generated"]')).toBeNull();
+    expect(first.value).toBe("");
+    expect(second.value).toBe("");
+    expect(generator.requests).toHaveLength(1);
 
     overlay.dispose();
   });
@@ -323,7 +656,7 @@ describe("content overlay", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "a", altKey: true, bubbles: true }));
     expect(input.value).toBe("Recife");
 
-    root?.querySelector<HTMLButtonElement>('[data-action="undo"]')?.click();
+    root?.querySelector<HTMLButtonElement>('[data-action="undo-field"]')?.click();
     input.focus();
     root?.querySelector<HTMLButtonElement>('[data-action="chip"]')?.click();
     expect(input.value).toBe("Recife");

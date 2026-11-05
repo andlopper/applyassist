@@ -60,11 +60,11 @@ Aceite: setter nativo + `input`/`change`; `select`, `date`, `maxlength`; desfaze
 
 ### [x] T-13 — Overlay (Shadow DOM)
 Depende de: T-09, T-11, T-12 | Ler: FDD §12, §10 (GET_FILL_VALUES) | Reqs: R-05, R-26
-Aceite: painel com contadores e lista; chip ao focar campo; "Aplicar", "Preencher prontos", "Desfazer", ESC; textos de `pt-br.ts`; sem `innerHTML` com dados externos (teste com rótulo malicioso `<img onerror>`); acessível por teclado e com `aria-live`.
+Aceite: painel com contadores e lista rolável; modal com altura de até metade da tela, cabeçalho com título/fechar fixo e rodapé com ações em duas linhas; indicador visual contínuo durante geração; cancelar encerra a espera da UI imediatamente e descarta a geração, sem perder o controle Cancelar durante atualização dos trechos; chip ao focar campo; aplicar/desfazer por campo; rodapé com "Preencher tudo" (inclui respostas de IA concluídas) e desfazer exclusivo do lote, removendo também a prévia de IA desfeita; "Gerar tudo" e cancelar; ESC; textos de `pt-br.ts`; sem `innerHTML` com dados externos (teste com rótulo malicioso `<img onerror>`); acessível por teclado e com `aria-live`.
 
 ### [x] T-14 — Options: onboarding e perfil
 Depende de: T-07, T-08 | Ler: FDD §12 (Options), §3 | Reqs: R-11, R-07, R-12
-Aceite: primeiro uso oferece colar texto / enviar .txt .md .json / formulário simples; revisão antes de salvar; interruptores das 4 categorias sensíveis (desligados por padrão); a extensão funciona sem configurar IA.
+Aceite: primeiro uso oferece colar texto / enviar .txt .md .json / formulário simples; revisão antes de salvar; interruptores das 4 categorias sensíveis (desligados por padrão); importação textual reconhece rótulos explícitos exatos e não infere dados de prosa ou títulos; a extensão funciona sem configurar IA.
 
 ## Fase 2 — Aprendizado e registros
 ### [x] T-15 — Motor de aprendizado
@@ -94,7 +94,7 @@ Aceite: função pura; testes de prompt (papel, regras, few-shot, formato, delim
 
 ### [x] T-21 — Botão "Gerar" no overlay
 Depende de: T-13, T-19, T-20 | Ler: FDD §10 (AI_GENERATE), §12 | Reqs: R-13, R-15
-Aceite: streaming direto no campo, desfazer, cancelar; texto da vaga só da seleção do usuário; sem dados sensíveis na requisição (teste inspecionando o payload); mensagem amigável para limite diário.
+Aceite: resposta transmitida na modal para revisão; preencher o campo somente após ação explícita "Aplicar", disponível ao concluir a geração; cancelar descarta a geração individual ou em lote; "Gerar tudo" somente para campos vazios; texto da vaga só da seleção do usuário; sem dados sensíveis na requisição (teste inspecionando o payload); mensagem amigável para limite diário.
 
 ### [x] T-22 — Painel lateral: modo colar e conexão
 Depende de: T-19, T-20 | Ler: FDD §12 (Side panel), §11 | Reqs: R-16, R-17

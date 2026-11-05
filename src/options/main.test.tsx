@@ -122,8 +122,77 @@ describe("R-08/R-10 options onboarding and learning review", () => {
     await flushUi();
     expect(document.querySelector(".options-toast")).toBeNull();
     expect(storage.values.get("profile:v1")).toMatchObject({
-      value: { values: { firstName: "Ana Silva" } },
+      value: { values: { firstName: "Ana" } },
     });
+
+    render(null, document.body);
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    expect((document.querySelector("input[aria-label='Nome']") as HTMLInputElement).value).toBe(
+      "Ana",
+    );
+    expect((document.querySelector("input[aria-label='E-mail']") as HTMLInputElement).value).toBe(
+      "ana@exemplo.com",
+    );
+    expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("persists imported fields and browser-autofilled values across reloads", async () => {
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
+    textarea.value = [
+      "Nome profissional: Maria Oliveira",
+      "Disponibilidade: Imediata",
+      "Prazo de aviso: 15 dias",
+      "Modelo de trabalho: Remoto",
+      "Nível de inglês: Intermediário",
+    ].join("\n");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushUi();
+
+    const nameInput = document.querySelector("input[aria-label='Nome']") as HTMLInputElement;
+    nameInput.value = "Beatriz";
+    buttonByName("Salvar perfil").click();
+    await flushUi();
+
+    expect(storage.values.get("profile:v1")).toMatchObject({
+      value: {
+        values: {
+          firstName: "Beatriz",
+          lastName: "Oliveira",
+          availability: "Imediata",
+          noticePeriod: "15 dias",
+          workModel: "Remoto",
+          englishLevel: "Intermediário",
+        },
+      },
+    });
+
+    render(null, document.body);
+    render(<OptionsApp />, document.body);
+    await flushUi();
+    await flushUi();
+
+    expect((document.querySelector("input[aria-label='Nome']") as HTMLInputElement).value).toBe(
+      "Beatriz",
+    );
+    expect(
+      (document.querySelector("input[aria-label='Disponibilidade']") as HTMLInputElement).value,
+    ).toBe("Imediata");
+    expect(
+      (document.querySelector("input[aria-label='Prazo de aviso']") as HTMLInputElement).value,
+    ).toBe("15 dias");
+    expect(
+      (document.querySelector("input[aria-label='Modelo de trabalho']") as HTMLInputElement).value,
+    ).toBe("Remoto");
+    expect(
+      (document.querySelector("input[aria-label='Nível de inglês']") as HTMLInputElement).value,
+    ).toBe("Intermediário");
   });
 
   it("keeps AI settings in a separate tab and removes the redundant full-name field", async () => {

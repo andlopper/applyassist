@@ -58,11 +58,12 @@ describe("profile validation and JSON import", () => {
     );
 
     expect(profile.values).toMatchObject({
-      firstName: "Ana Silva",
+      firstName: "Ana",
       email: "ana@exemplo.com",
       phone: "+55 11 99999-9999",
       linkedinUrl: "https://linkedin.com/in/ana-silva",
     });
+    expect(profile.values.lastName).toBeUndefined();
   });
 
   it("parses the last company under the current-company profile field", () => {
@@ -78,6 +79,60 @@ describe("profile validation and JSON import", () => {
 
     expect(profile.values).toMatchObject({ firstName: "Ana" });
     expect(profile.values.fullName).toBeUndefined();
+  });
+
+  it("parses labeled Markdown profile summaries without treating prose as fields", () => {
+    const profile = parseProfileText(
+      [
+        "# Perfil profissional — Aline Souza Martins",
+        "",
+        "**Nome profissional:** Aline Souza Martins\\",
+        "**Localização profissional:** Curitiba, Paraná, Brasil\\",
+        "**Tempo de experiência informado:** aproximadamente 7 anos em tecnologia.",
+        "**Experiência mais recente:** QA Engineer (Pleno) na Exemplo Tech, de janeiro de 2024 a outubro de 2026.",
+        "",
+        "### Pretensão salarial — usar com contexto",
+        "- Em um processo anterior, informou uma faixa salarial específica.",
+        "- GitHub Actions; redução de 20% no tempo do pipeline.",
+        "- Conhecimento de e-commerce, catálogo e checkout.",
+        "",
+        "## Links profissionais",
+        "- LinkedIn: https://www.linkedin.com/in/aline-souza/",
+        "- GitHub: https://github.com/alinesouza",
+      ].join("\n"),
+    );
+
+    expect(profile.values).toMatchObject({
+      firstName: "Aline",
+      lastName: "Souza Martins",
+      city: "Curitiba",
+      state: "Paraná",
+      country: "Brasil",
+      yearsExperience: "aproximadamente 7 anos em tecnologia.",
+      currentRole: "QA Engineer (Pleno)",
+      currentCompany: "Exemplo Tech",
+      linkedinUrl: "https://www.linkedin.com/in/aline-souza/",
+      githubUrl: "https://github.com/alinesouza",
+    });
+    expect(profile.values.fullName).toBeUndefined();
+    expect(profile.values.salaryExpectation).toBeUndefined();
+  });
+
+  it("does not match labels by substring or split values on Markdown dashes", () => {
+    const profile = parseProfileText(
+      [
+        "Área principal: Quality Assurance",
+        "Conhecimento de e-commerce: catálogo e checkout",
+        "Experiência em GitHub Actions: pipelines de CI",
+        "### Pretensão salarial — usar com contexto",
+        "Detalhes de atuação: organização e redução de etapas",
+      ].join("\n"),
+    );
+
+    expect(profile.values.country).toBeUndefined();
+    expect(profile.values.githubUrl).toBeUndefined();
+    expect(profile.values.salaryExpectation).toBeUndefined();
+    expect(profile.values.firstName).toBeUndefined();
   });
 });
 

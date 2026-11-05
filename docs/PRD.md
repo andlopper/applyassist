@@ -53,7 +53,7 @@ Quem busca emprego gasta a maior parte do tempo repetindo os mesmos campos (nome
 | R-10 | Dados somente locais; exportar/importar JSON; apagar tudo; nunca `chrome.storage.sync` | Must |
 | R-11 | Onboarding: colar texto, enviar .txt/.md/.json ou preencher formulário simples; o texto vira "contexto geral" | Must |
 | R-12 | Funciona sem IA desde o primeiro dia | Must |
-| R-13 | IA opcional: conectar OpenRouter (login PKCE ou chave manual), escolher modelo, geração em streaming direto no campo, desfazer | Should |
+| R-13 | IA opcional: conectar OpenRouter (login PKCE ou chave manual), escolher modelo, geração em streaming na modal para revisão e aplicação explícita ao campo, geração em lote para campos vazios, cancelar e desfazer | Should |
 | R-14 | Nada sensível nem dados de contato vai para a IA; `data_collection: deny`; limite de contexto | Must (se R-13) |
 | R-15 | Descrição da vaga só por seleção ou colagem do usuário; nunca leitura automática | Must |
 | R-16 | Modo colar no painel lateral: funciona em qualquer site, sem acessar a página | Should |
